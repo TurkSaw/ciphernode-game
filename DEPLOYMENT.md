@@ -1,32 +1,52 @@
 # 🚀 CipherNode Game - Deployment Guide
 
-## Render ile Deploy Etme
+## Render ile PostgreSQL Deploy Etme
 
 ### 1. GitHub Repository Hazırlama
 ```bash
 git add .
-git commit -m "Prepare for Render deployment"
+git commit -m "Add PostgreSQL support for Render deployment"
 git push origin main
 ```
 
-### 2. Render'da Yeni Service Oluşturma
-1. [render.com](https://render.com) adresine git
-2. "New +" > "Web Service" seç
-3. GitHub repository'ni bağla
-4. Ayarları yapılandır:
+### 2. Render'da PostgreSQL Database Oluşturma
+1. [render.com](https://render.com) dashboard'a git
+2. "New +" > "PostgreSQL" seç
+3. Ayarları yapılandır:
+   - **Name**: ciphernode-db
+   - **Database**: ciphernode
+   - **User**: ciphernode_user
+   - **Plan**: Free (1GB)
+4. "Create Database" butonuna bas
+5. **DATABASE_URL**'i kopyala (otomatik oluşur)
+
+### 3. Render'da Web Service Oluşturma
+1. "New +" > "Web Service" seç
+2. GitHub repository'ni bağla
+3. Ayarları yapılandır:
    - **Name**: ciphernode-game
    - **Environment**: Node
    - **Build Command**: `npm install`
    - **Start Command**: `npm start`
    - **Plan**: Free
 
-### 3. Environment Variables Ayarlama
+### 4. Environment Variables Ayarlama
 Render dashboard'da şu değişkenleri ekle:
 ```
 NODE_ENV=production
+DATABASE_URL=<postgresql-database-url-from-step-2>
+USE_POSTGRESQL=true
 JWT_SECRET=<auto-generate-strong-secret>
 ALLOWED_ORIGINS=https://your-app-name.onrender.com
 SOCKET_CORS_ORIGIN=https://your-app-name.onrender.com
+```
+
+### 5. Database Schema Kurulumu
+Deploy sonrası Render dashboard'da:
+1. Web Service > "Shell" sekmesi
+2. Şu komutu çalıştır:
+```bash
+npm run setup-db
 ```
 
 ### 4. Custom Domain (Opsiyonel)

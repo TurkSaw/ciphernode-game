@@ -9,7 +9,10 @@ const rateLimit = require('express-rate-limit');
 
 // Load environment variables from .env file
 require('dotenv').config(); 
-const SimpleDB = require('./simple-db');
+
+// Database selection based on environment
+const usePostgreSQL = process.env.DATABASE_URL || process.env.USE_POSTGRESQL === 'true';
+const DB = usePostgreSQL ? require('./postgresql-db') : require('./simple-db');
 
 // Environment variables with defaults
 const PORT = process.env.PORT || 3000;
@@ -112,11 +115,36 @@ app.get('/browserconfig.xml', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'browserconfig.xml'));
 });
 
+// Health check endpoint
+app.get('/health', async (req, res) => {
+    try {
+        // Test database connection
+        const { data, error } = await db.findPlayer('health-check-user');
+        
+        res.status(200).json({
+            status: 'healthy',
+            timestamp: new Date().toISOString(),
+            database: usePostgreSQL ? 'postgresql' : 'json',
+            uptime: process.uptime()
+        });
+    } catch (error) {
+        res.status(503).json({
+            status: 'unhealthy',
+            error: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
 
 
 // --- DATABASE CONNECTION ---
-const db = new SimpleDB();
-console.log("✅ Connected to Simple JSON Database");
+const db = new DB();
+if (usePostgreSQL) {
+    console.log("🐘 Using PostgreSQL Database");
+} else {
+    console.log("📄 Using JSON File Database");
+}
 
 // --- INPUT VALIDATION HELPERS ---
 const validator = {
