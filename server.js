@@ -11,7 +11,7 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config(); 
 
 // Database selection based on environment
-const usePostgreSQL = process.env.DATABASE_URL || process.env.USE_POSTGRESQL === 'true';
+const usePostgreSQL = process.env.DATABASE_URL && process.env.USE_POSTGRESQL === 'true';
 const DB = usePostgreSQL ? require('./postgresql-db') : require('./simple-db');
 
 // Environment variables with defaults
@@ -139,9 +139,15 @@ app.get('/health', async (req, res) => {
 
 
 // --- DATABASE CONNECTION ---
+console.log("🔍 Database Configuration:");
+console.log("  DATABASE_URL exists:", !!process.env.DATABASE_URL);
+console.log("  USE_POSTGRESQL:", process.env.USE_POSTGRESQL);
+console.log("  Selected database:", usePostgreSQL ? "PostgreSQL" : "JSON");
+
 const db = new DB();
 if (usePostgreSQL) {
     console.log("🐘 Using PostgreSQL Database");
+    console.log("  Connection string:", process.env.DATABASE_URL ? "SET" : "NOT SET");
 } else {
     console.log("📄 Using JSON File Database");
 }
@@ -197,10 +203,17 @@ function authenticateToken(req, res, next) {
 // --- AUTH ROUTES ---
 app.post('/api/register', async (req, res) => {
     try {
+        console.log("📝 Registration attempt:", { 
+            username: req.body.username, 
+            email: req.body.email,
+            hasPassword: !!req.body.password 
+        });
+
         const { username, email, password } = req.body;
 
         // Input validation
         if (!username || !email || !password) {
+            console.log("❌ Missing required fields");
             return res.status(400).json({ error: 'Username, email and password are required' });
         }
 
