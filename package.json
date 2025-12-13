@@ -1,10 +1,30 @@
 {
   "name": "ciphernode-game",
   "version": "1.0.0",
-  "description": "Strategy game with live chat",
+  "description": "Real-time multiplayer cyberpunk puzzle game built with Node.js and Socket.IO",
   "main": "server.js",
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "game",
+    "multiplayer",
+    "puzzle",
+    "cyberpunk",
+    "socket.io",
+    "real-time",
+    "nodejs"
+  ],
+  "author": "CipherNode Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TurkSaw/ciphernode-game.git"
   },
   "dependencies": {
     "body-parser": "^1.20.2",
