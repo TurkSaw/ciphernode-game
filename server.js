@@ -11,7 +11,8 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config(); 
 
 // Database selection based on environment
-const usePostgreSQL = process.env.DATABASE_URL && process.env.USE_POSTGRESQL === 'true';
+// If DATABASE_URL exists, use PostgreSQL (production), otherwise use JSON (development)
+const usePostgreSQL = !!process.env.DATABASE_URL;
 const DB = usePostgreSQL ? require('./postgresql-db') : require('./simple-db');
 
 // Environment variables with defaults
