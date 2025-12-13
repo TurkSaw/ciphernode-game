@@ -17,7 +17,8 @@ Real-time multiplayer cyberpunk puzzle game built with Node.js, Socket.IO and JS
 - **Scoring System**: Fast solution = higher points
 - **Live Chat**: Real-time messaging between players
 - **Leaderboard**: Track top scores
-- **Simple Auth**: Quick login with username
+- **JWT Authentication**: Secure login with JWT tokens and bcrypt password hashing
+- **Auto Login**: Remember user sessions with localStorage
 
 ### 🛠️ Technologies
 
@@ -25,6 +26,8 @@ Real-time multiplayer cyberpunk puzzle game built with Node.js, Socket.IO and JS
 - **Frontend**: Vanilla JavaScript, CSS3
 - **Database**: JSON file-based (SimpleDB)
 - **Real-time**: WebSocket connections
+- **Authentication**: JWT (jsonwebtoken) + bcrypt password hashing
+- **Security**: Token-based authentication with auto-expiration
 
 ### 📦 Installation
 
@@ -39,24 +42,30 @@ Real-time multiplayer cyberpunk puzzle game built with Node.js, Socket.IO and JS
    npm install
    ```
 
-3. **Start the server**:
+3. **Migrate existing users** (if any):
+   ```bash
+   npm run migrate
+   ```
+
+4. **Start the server**:
    ```bash
    npm start
    ```
 
-4. **Open in browser**:
+5. **Open in browser**:
    ```
    http://localhost:3000
    ```
 
 ### 🎯 How to Play
 
-1. **Register/Login**: Start with LOGIN or REGISTER
-2. **Energy**: Each game costs 10 energy (starts with 100)
-3. **Goal**: Activate all cells in the grid
-4. **Strategy**: Clicking a cell toggles itself and neighbors
-5. **Score**: Faster solutions give higher points
-6. **Social**: Chat with other players
+1. **Register/Login**: Create account or login with email/password
+2. **Auto Login**: Your session is remembered for 24 hours
+3. **Energy**: Each game costs 10 energy (starts with 100, regenerates 1 per 5 minutes)
+4. **Goal**: Activate all cells in the grid
+5. **Strategy**: Clicking a cell toggles itself and neighbors
+6. **Score**: Faster solutions give higher points
+7. **Social**: Chat with other players in real-time
 
 ### 📁 Project Structure
 
@@ -86,7 +95,10 @@ ciphernode/
 
 #### API Endpoints
 - `GET /`: Main page (index.html)
-- `WebSocket /socket.io`: Real-time connections
+- `POST /api/register`: User registration
+- `POST /api/login`: User authentication
+- `GET /api/profile`: Get user profile (protected)
+- `WebSocket /socket.io`: Real-time connections with JWT auth
 
 ### 🎨 Theme
 
@@ -108,18 +120,26 @@ This project is released under the MIT License.
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+### ⚡ Energy System
+
+- **Auto Regeneration**: 1 energy every 5 minutes
+- **Maximum Capacity**: 100 energy
+- **Game Cost**: 10 energy per game
+- **Real-time Updates**: Live energy counter with regeneration timer
+- **Smart Management**: Automatic energy calculation on login
+
 ### 🐛 Known Issues
 
-- Energy system doesn't auto-regenerate currently
 - Socket cleanup on player disconnect could be improved
+- Mobile responsive design needs optimization
 
 ### 🚀 Future Features
 
-- [ ] Auto energy regeneration system
-- [ ] More puzzle types
-- [ ] User profile system
-- [ ] Achievement system
+- [ ] More puzzle types and difficulty levels
+- [ ] User profile system with avatars
+- [ ] Achievement and badge system
 - [ ] Mobile responsive design improvements
+- [ ] Energy boost items and power-ups
 
 ---
 
@@ -169,7 +189,7 @@ This project is released under the MIT License.
 ### 🎯 Nasıl Oynanır
 
 1. **Kayıt/Giriş**: LOGIN veya REGISTER ile başla
-2. **Enerji**: Her oyun 10 enerji harcar (başlangıçta 100)
+2. **Enerji**: Her oyun 10 enerji harcar (başlangıçta 100, her 5 dakikada 1 yenilenir)
 3. **Hedef**: Grid'deki tüm hücreleri aktif hale getir
 4. **Strateji**: Bir hücreye tıklamak kendisini ve komşularını değiştirir
 5. **Skor**: Hızlı çözüm daha yüksek puan getirir

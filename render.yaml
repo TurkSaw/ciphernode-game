@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: ciphernode-game
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ENERGY_REGENERATION_MINUTES
+        value: 5
+      - key: MAX_ENERGY
+        value: 100
+      - key: GAME_ENERGY_COST
+        value: 10
+      - key: INITIAL_ENERGY
+        value: 100
+      - key: BCRYPT_ROUNDS
+        value: 10
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: 100

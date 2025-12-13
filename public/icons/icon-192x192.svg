@@ -1,0 +1,38 @@
+
+    <svg width="192" height="192" viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" style="stop-color:#00ff88;stop-opacity:0.3" />
+          <stop offset="100%" style="stop-color:#00ff88;stop-opacity:0" />
+        </radialGradient>
+      </defs>
+      
+      <!-- Background -->
+      <rect width="192" height="192" fill="#0a0a0f"/>
+      
+      <!-- Glow effect -->
+      <rect width="192" height="192" fill="url(#glow)"/>
+      
+      <!-- Border -->
+      <rect x="19.200000000000003" y="19.200000000000003" width="153.60000000000002" height="153.60000000000002" 
+            fill="none" stroke="#00ff88" stroke-width="3.84" rx="7.68"/>
+      
+      <!-- Circuit pattern -->
+      <!-- Horizontal line -->
+      <line x1="38.400000000000006" y1="96" x2="153.60000000000002" y2="96" 
+            stroke="#00ff88" stroke-width="5.76" stroke-linecap="round"/>
+      
+      <!-- Vertical line -->
+      <line x1="96" y1="38.400000000000006" x2="96" y2="153.60000000000002" 
+            stroke="#00ff88" stroke-width="5.76" stroke-linecap="round"/>
+      
+      <!-- Corner nodes -->
+      <circle cx="57.599999999999994" cy="57.599999999999994" r="7.68" fill="#00ff88"/>
+      <circle cx="134.39999999999998" cy="57.599999999999994" r="7.68" fill="#00ff88"/>
+      <circle cx="57.599999999999994" cy="134.39999999999998" r="7.68" fill="#00ff88"/>
+      <circle cx="134.39999999999998" cy="134.39999999999998" r="7.68" fill="#00ff88"/>
+      
+      <!-- Center node -->
+      <circle cx="96" cy="96" r="11.52" fill="#00ff88"/>
+      <circle cx="96" cy="96" r="7.68" fill="#ffffff"/>
+    </svg>

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CipherNode Icon Generator</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #0a0a0f; color: #fff; }
+        canvas { border: 1px solid #00ff88; margin: 10px; }
+        .icon-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+        .icon-item { text-align: center; }
+    </style>
+</head>
+<body>
+    <h1>CipherNode PWA Icons</h1>
+    <p>Right-click on each icon to save as PNG</p>
+    
+    <div class="icon-grid" id="iconGrid"></div>
+
+    <script>
+        const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+        
+        function createIcon(size) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            
+            // Background
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, size, size);
+            
+            // Border
+            ctx.strokeStyle = '#00ff88';
+            ctx.lineWidth = size * 0.02;
+            ctx.strokeRect(size * 0.1, size * 0.1, size * 0.8, size * 0.8);
+            
+            // Inner glow effect
+            const gradient = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+            gradient.addColorStop(0, 'rgba(0, 255, 136, 0.3)');
+            gradient.addColorStop(1, 'rgba(0, 255, 136, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+            
+            // Main symbol - Circuit pattern
+            ctx.strokeStyle = '#00ff88';
+            ctx.lineWidth = size * 0.03;
+            ctx.lineCap = 'round';
+            
+            // Draw circuit lines
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const radius = size * 0.25;
+            
+            // Horizontal lines
+            ctx.beginPath();
+            ctx.moveTo(size * 0.2, centerY);
+            ctx.lineTo(size * 0.8, centerY);
+            ctx.stroke();
+            
+            // Vertical lines
+            ctx.beginPath();
+            ctx.moveTo(centerX, size * 0.2);
+            ctx.lineTo(centerX, size * 0.8);
+            ctx.stroke();
+            
+            // Corner connections
+            const corners = [
+                [size * 0.3, size * 0.3],
+                [size * 0.7, size * 0.3],
+                [size * 0.3, size * 0.7],
+                [size * 0.7, size * 0.7]
+            ];
+            
+            corners.forEach(([x, y]) => {
+                ctx.beginPath();
+                ctx.arc(x, y, size * 0.04, 0, Math.PI * 2);
+                ctx.fillStyle = '#00ff88';
+                ctx.fill();
+            });
+            
+            // Center node
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, size * 0.06, 0, Math.PI * 2);
+            ctx.fillStyle = '#00ff88';
+            ctx.fill();
+            
+            // Add glow to center
+            ctx.shadowColor = '#00ff88';
+            ctx.shadowBlur = size * 0.1;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, size * 0.04, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            
+            return canvas;
+        }
+        
+        function downloadCanvas(canvas, filename) {
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+        
+        // Generate all icons
+        const iconGrid = document.getElementById('iconGrid');
+        
+        sizes.forEach(size => {
+            const canvas = createIcon(size);
+            const container = document.createElement('div');
+            container.className = 'icon-item';
+            
+            const label = document.createElement('div');
+            label.textContent = `${size}x${size}`;
+            label.style.marginBottom = '10px';
+            label.style.color = '#00ff88';
+            
+            const downloadBtn = document.createElement('button');
+            downloadBtn.textContent = 'Download';
+            downloadBtn.style.marginTop = '10px';
+            downloadBtn.style.padding = '5px 10px';
+            downloadBtn.style.background = '#00ff88';
+            downloadBtn.style.color = '#0a0a0f';
+            downloadBtn.style.border = 'none';
+            downloadBtn.style.borderRadius = '4px';
+            downloadBtn.style.cursor = 'pointer';
+            
+            downloadBtn.onclick = () => {
+                downloadCanvas(canvas, `icon-${size}x${size}.png`);
+            };
+            
+            container.appendChild(label);
+            container.appendChild(canvas);
+            container.appendChild(downloadBtn);
+            iconGrid.appendChild(container);
+        });
+        
+        // Auto-download all icons
+        setTimeout(() => {
+            if (confirm('Download all icons automatically?')) {
+                sizes.forEach(size => {
+                    const canvas = createIcon(size);
+                    downloadCanvas(canvas, `icon-${size}x${size}.png`);
+                });
+            }
+        }, 1000);
+    </script>
+</body>
+</html>

@@ -9,7 +9,12 @@
   },
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "migrate": "node migrate-users.js",
+    "create-icons": "node create-icons.js",
+    "pwa-audit": "echo 'Open Chrome DevTools > Lighthouse > PWA audit to test PWA features'",
+    "test-offline": "echo 'Open DevTools > Network > Offline to test offline functionality'",
+    "build": "echo 'No build step required for Node.js app'"
   },
   "keywords": [
     "game",
@@ -27,9 +32,12 @@
     "url": "https://github.com/TurkSaw/ciphernode-game.git"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "body-parser": "^1.20.2",
     "dotenv": "^16.4.5",
     "express": "^4.18.2",
+    "express-rate-limit": "^6.10.0",
+    "jsonwebtoken": "^9.0.3",
     "socket.io": "^4.7.2"
   }
 }
