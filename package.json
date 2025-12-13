@@ -1,0 +1,15 @@
+{
+  "name": "ciphernode-game",
+  "version": "1.0.0",
+  "description": "Strategy game with live chat",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
+  }
+}

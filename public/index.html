@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CipherNode - Network Access</title>
+
+    <style>
+        :root {
+            --primary: #00ff88;
+            --bg: #0d1117;
+            --panel: #161b22;
+            --text: #e6edf3;
+            --danger: #ff4444;
+            --energy: #ffae00;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* --- AUTH SCREENS --- */
+        #auth-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .auth-box {
+            background: var(--panel);
+            padding: 40px;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            width: 340px;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.05);
+            display: none; /* Hidden by default */
+        }
+
+        .auth-title { color: var(--primary); font-size: 24px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 2px; }
+        
+        .input-group { margin-bottom: 15px; text-align: left; }
+        .input-label { font-size: 11px; color: #8b949e; margin-bottom: 5px; display: block; }
+        
+        input {
+            width: 100%;
+            padding: 12px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            color: white;
+            box-sizing: border-box;
+            outline: none;
+            border-radius: 4px;
+        }
+        input:focus { border-color: var(--primary); }
+
+        .auth-btn {
+            width: 100%;
+            padding: 14px;
+            margin-top: 10px;
+            background: var(--primary);
+            color: black;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            border-radius: 4px;
+        }
+        .auth-btn.secondary { background: #30363d; color: white; margin-top: 10px;}
+        .auth-btn:hover { opacity: 0.9; }
+
+        .back-link { margin-top: 15px; font-size: 12px; cursor: pointer; text-decoration: underline; color: #8b949e; }
+        .error-msg { color: var(--danger); font-size: 12px; margin-top: 10px; display: none; }
+
+        /* --- MAIN MENU (Initial Screen) --- */
+        #main-menu { display: flex; flex-direction: column; gap: 15px; }
+        .menu-btn { width: 200px; padding: 15px; font-size: 16px; cursor: pointer; border: 1px solid var(--primary); background: transparent; color: var(--primary); font-family: inherit; font-weight: bold; transition: 0.2s; }
+        .menu-btn:hover { background: var(--primary); color: black; }
+
+        /* --- GAME UI --- */
+        #app-container { display: none; flex-direction: column; height: 100%; }
+        header { background: var(--panel); padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; }
+        .energy-container { width: 100%; height: 6px; background: #333; }
+        .energy-fill { height: 100%; background: var(--energy); width: 100%; transition: width 0.5s ease; }
+        #game-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        .grid { display: grid; gap: 5px; background: var(--panel); padding: 10px; border-radius: 8px; border: 1px solid #30363d; }
+        .cell { width: 50px; height: 50px; background-color: #2a2f38; border-radius: 4px; cursor: pointer; border: 1px solid #444; transition: background 0.2s; }
+        .cell.active { background-color: var(--primary); box-shadow: 0 0 10px var(--primary); border-color: #fff; }
+        .btn { background: var(--primary); color: #000; border: none; padding: 10px 20px; font-weight: bold; cursor: pointer; margin-top: 20px; border-radius: 4px; }
+        #bottom-panel { height: 40%; background: var(--panel); border-top: 1px solid #30363d; display: flex; flex-direction: column; }
+        .tabs { display: flex; border-bottom: 1px solid #30363d; }
+        .tab { flex: 1; padding: 10px; background: #0d1117; color: #8b949e; cursor: pointer; border: none; font-weight: bold; }
+        .tab.active { background: var(--panel); color: var(--primary); border-bottom: 2px solid var(--primary); }
+        .tab-content { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+        .tab-content.active { display: flex; }
+        #chat-messages { flex: 1; padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;}
+        .msg { font-size: 12px; word-break: break-word; } .msg .user { color: var(--primary); font-weight: bold; }
+        #leaderboard-list { flex: 1; padding: 10px; overflow-y: auto; }
+        .lb-item { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #30363d; font-size: 13px; }
+        .modal { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; z-index: 10; }
+        .modal h2 { color: var(--primary); }
+    </style>
+</head>
+<body>
+
+    <!-- AUTHENTICATION OVERLAY -->
+    <div id="auth-overlay">
+        
+        <!-- 1. MAIN MENU -->
+        <div id="main-menu">
+            <h1 style="color:var(--primary); margin-bottom:30px;">CIPHER NODE</h1>
+            <button class="menu-btn" onclick="showScreen('login-screen')">LOGIN</button>
+            <button class="menu-btn" onclick="showScreen('register-screen')">REGISTER</button>
+        </div>
+
+        <!-- 2. LOGIN SCREEN -->
+        <div id="login-screen" class="auth-box">
+            <div class="auth-title">System Login</div>
+            <div class="input-group">
+                <span class="input-label">EMAIL</span>
+                <input type="email" id="login-email">
+            </div>
+            <div class="input-group">
+                <span class="input-label">PASSWORD</span>
+                <input type="password" id="login-pass">
+            </div>
+            <button class="auth-btn" onclick="handleLogin()">Connect</button>
+            <div class="back-link" onclick="showScreen('main-menu')">Back to Menu</div>
+            <div id="login-error" class="error-msg"></div>
+        </div>
+
+        <!-- 3. REGISTER SCREEN -->
+        <div id="register-screen" class="auth-box">
+            <div class="auth-title">New Node</div>
+            <div class="input-group">
+                <span class="input-label">USERNAME (Public ID)</span>
+                <input type="text" id="reg-user">
+            </div>
+            <div class="input-group">
+                <span class="input-label">EMAIL</span>
+                <input type="email" id="reg-email">
+            </div>
+            <div class="input-group">
+                <span class="input-label">PASSWORD</span>
+                <input type="password" id="reg-pass">
+            </div>
+            <button class="auth-btn" onclick="handleRegister()">Create Account</button>
+            <div class="back-link" onclick="showScreen('main-menu')">Back to Menu</div>
+            <div id="reg-error" class="error-msg"></div>
+        </div>
+
+
+
+    </div>
+
+    <!-- MAIN GAME APP -->
+    <div id="app-container">
+        <header>
+            <div class="stats">NODE: <span id="display-username" style="color:var(--primary)">Unknown</span></div>
+            <div style="display:flex; align-items:center; gap:15px;">
+                <div class="stats">LVL: <span id="level-display">1</span> | PTS: <span id="score-display">0</span></div>
+                <button onclick="handleLogout()" style="background:transparent; border:1px solid var(--danger); color:var(--danger); padding:5px 10px; cursor:pointer; font-weight:bold; font-family:inherit; font-size:12px;">LOGOUT</button>
+            </div>
+        </header>
+        <div class="energy-container"><div class="energy-fill" id="energy-bar"></div></div>
+        <div style="text-align: center; font-size: 12px; padding: 2px;">Energy: <span id="energy-text">100</span>%</div>
+        
+        <div id="game-area">
+            <div style="margin-bottom:10px; font-size:1.2rem;">Decrypt the Node</div>
+            <div style="color:var(--primary); margin-bottom:15px;">Time: <span id="timer">0</span>s</div>
+            <div class="grid" id="grid"></div>
+            <button id="start-btn" class="btn" onclick="startGame()">START HACK (-10 Energy)</button>
+            <div id="modal" class="modal">
+                <h2 id="modal-title">Level Cleared!</h2>
+                <p id="modal-msg">Score: 100</p>
+                <button class="btn" onclick="closeModal()">Continue</button>
+            </div>
+        </div>
+
+        <div id="bottom-panel">
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('chat')">SECURE CHAT</button>
+                <button class="tab" onclick="switchTab('leaderboard')">TOP NODES</button>
+            </div>
+            <div id="chat-content" class="tab-content active">
+                <div id="chat-messages"><div class="msg system"><span class="user">System:</span> Online.</div></div>
+                <div style="display:flex; padding:10px; background:#0d1117; border-top:1px solid #30363d;">
+                    <input type="text" id="chat-input" placeholder="Broadcast..." style="flex:1;">
+                    <button class="btn" style="margin:0 0 0 5px; padding:0 15px; margin-top:0;" onclick="sendChat()">SEND</button>
+                </div>
+            </div>
+            <div id="leaderboard-content" class="tab-content">
+                <div id="leaderboard-list"></div>
+            </div>
+        </div>
+    </div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    const socket = io();
+
+    // --- AUTH NAVIGATION ---
+    function showScreen(id) {
+        document.querySelectorAll('#auth-overlay > div').forEach(d => d.style.display = 'none');
+        document.getElementById(id).style.display = 'block';
+        // Clear errors
+        document.querySelectorAll('.error-msg').forEach(e => e.style.display = 'none');
+    }
+
+    // --- LOGOUT LOGIC ---
+    async function handleLogout() {
+        // Reload page to reset all states and return to login
+        location.reload();
+    }
+
+    // --- 1. REGISTER LOGIC ---
+    async function handleRegister() {
+        const user = document.getElementById('reg-user').value;
+        const email = document.getElementById('reg-email').value;
+        const pass = document.getElementById('reg-pass').value;
+        const err = document.getElementById('reg-error');
+
+        if(!user || !email || !pass) {
+            err.innerText = "All fields required"; err.style.display = 'block'; return;
+        }
+
+        // Demo mode - basit doğrulama
+        if(user.length < 3) {
+            err.innerText = "Username must be at least 3 characters"; err.style.display = 'block'; return;
+        }
+
+        // Direkt oyuna gir
+        enterGame(user);
+    }
+
+    // Verification screen artık kullanılmıyor
+
+    // --- 3. LOGIN LOGIC ---
+    async function handleLogin() {
+        const email = document.getElementById('login-email').value;
+        const pass = document.getElementById('login-pass').value;
+        const err = document.getElementById('login-error');
+
+        if(!email || !pass) {
+            err.innerText = "Email and password required"; err.style.display = 'block'; return;
+        }
+
+        // Demo mode - email'den username çıkar
+        const username = email.split('@')[0];
+        if(username.length < 3) {
+            err.innerText = "Invalid email format"; err.style.display = 'block'; return;
+        }
+
+        enterGame(username);
+    }
+
+    async function enterGame(username) {
+        document.getElementById('display-username').innerText = username;
+        document.getElementById('auth-overlay').style.display = 'none';
+        document.getElementById('app-container').style.display = 'flex';
+        
+        socket.emit('join game', { username: username });
+    }
+
+    // --- GAME & SOCKET LOGIC (Standard) ---
+    // (Same logic as before, condensed for brevity)
+    let level = 1; let points = 0; let energy = 100; let isPlaying = false; let timerInterval; let secondsElapsed = 0; let gridSize = 3; let gridState = [];
+    const gridEl = document.getElementById('grid'); const modal = document.getElementById('modal');
+
+    function updateUI() {
+        document.getElementById('energy-text').innerText = energy;
+        document.getElementById('energy-bar').style.width = energy + "%";
+        document.getElementById('score-display').innerText = points;
+        document.getElementById('level-display').innerText = level;
+    }
+    socket.on('sync score', (s) => { if(s > points) points = s; updateUI(); });
+    socket.on('auth_error', (msg) => { alert(msg); location.reload(); });
+
+    function startGame() {
+        if(energy < 10) return alert("Low Energy");
+        energy-=10; updateUI(); isPlaying=true; secondsElapsed=0; document.getElementById('timer').innerText="0";
+        document.getElementById('start-btn').style.display='none';
+        generateLevel();
+        timerInterval=setInterval(()=>{ secondsElapsed++; document.getElementById('timer').innerText=secondsElapsed;},1000);
+    }
+    function generateLevel() {
+        gridEl.innerHTML=''; if(level>5) gridSize=4; if(level>10) gridSize=5;
+        gridEl.style.gridTemplateColumns=`repeat(${gridSize}, 50px)`;
+        gridState=[];
+        for(let r=0;r<gridSize;r++){
+            let row=[]; for(let c=0;c<gridSize;c++){
+                let cell=document.createElement('div'); cell.className='cell'; cell.dataset.r=r; cell.dataset.c=c;
+                cell.onclick=()=>handleMove(r,c); gridEl.appendChild(cell); row.push(false);
+            } gridState.push(row);
+        }
+        for(let i=0;i<level+3;i++) toggleCell(Math.floor(Math.random()*gridSize), Math.floor(Math.random()*gridSize));
+    }
+    function handleMove(r,c) { if(isPlaying){ toggleCell(r,c); if(gridState.every(row=>row.every(v=>v))) endGame(); } }
+    function toggleCell(r,c) {
+        [[0,0],[0,1],[0,-1],[1,0],[-1,0]].forEach(([dr,dc])=>{
+            let nr=r+dr,nc=c+dc; if(nr>=0&&nr<gridSize&&nc>=0&&nc<gridSize){
+                gridState[nr][nc]=!gridState[nr][nc];
+                let cell=document.querySelector(`.cell[data-r='${nr}'][data-c='${nc}']`);
+                cell.classList.toggle('active');
+            }
+        });
+    }
+    function endGame() {
+        clearInterval(timerInterval); isPlaying=false;
+        let p = Math.max(0, 100 - (Math.floor(secondsElapsed/60)*10));
+        points+=p; level++; updateUI();
+        socket.emit('submit score', points);
+        document.getElementById('modal-msg').innerHTML=`Time: ${secondsElapsed}s<br>Reward: +${p} Tokens`;
+        modal.style.display='flex';
+    }
+    function closeModal() { modal.style.display='none'; document.getElementById('start-btn').style.display='block'; gridEl.innerHTML=''; }
+
+    function switchTab(t) {
+        document.querySelectorAll('.tab-content').forEach(e=>e.classList.remove('active'));
+        document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));
+        if(t==='chat') { document.getElementById('chat-content').classList.add('active'); document.querySelectorAll('.tab')[0].classList.add('active'); }
+        else { document.getElementById('leaderboard-content').classList.add('active'); document.querySelectorAll('.tab')[1].classList.add('active'); }
+    }
+    socket.on('chat message', (msg) => {
+        let d=document.createElement('div'); d.className='msg'; if(msg.user=='System') d.className+=' system';
+        d.innerHTML=`<span class="user">${msg.user}:</span> ${msg.text}`;
+        let b=document.getElementById('chat-messages'); b.appendChild(d); b.scrollTop=b.scrollHeight;
+    });
+    function sendChat() { let i=document.getElementById('chat-input'); if(i.value){ socket.emit('chat message', i.value); i.value=''; } }
+    socket.on('update leaderboard', (data) => {
+        let l=document.getElementById('leaderboard-list'); l.innerHTML='';
+        data.forEach((p,i)=> l.innerHTML+=`<div class="lb-item"><span style="color:var(--energy)">#${i+1}</span> <span>${p.username}</span> <span style="color:var(--primary)">${p.score}</span></div>`);
+    });
+</script>
+</body>
+</html>
