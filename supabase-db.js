@@ -440,19 +440,109 @@ class SupabaseDB {
     // Başarımları getir
     async getPlayerAchievements(username) {
         try {
-            // Şimdilik boş achievement sistemi
+            // Get user ID
+            const { data: user, error: userError } = await this.supabase
+                .from('users')
+                .select('id, total_games, score, best_time, current_streak, total_play_time')
+                .eq('username', username)
+                .single();
+            
+            if (userError) throw userError;
+            
+            // Get all achievements
+            const { data: allAchievements, error: achievementsError } = await this.supabase
+                .from('achievements')
+                .select('*');
+            
+            if (achievementsError) throw achievementsError;
+            
+            // Get user's unlocked achievements
+            const { data: userAchievements, error: userAchError } = await this.supabase
+                .from('user_achievements')
+                .select('achievement_id, unlocked_at')
+                .eq('user_id', user.id);
+            
+            if (userAchError) throw userAchError;
+            
+            const unlockedIds = (userAchievements || []).map(ua => ua.achievement_id);
+            
+            // Separate unlocked and locked achievements
+            const unlocked = [];
+            const locked = [];
+            let totalPoints = 0;
+            
+            for (const achievement of (allAchievements || [])) {
+                const isUnlocked = unlockedIds.includes(achievement.id);
+                
+                if (isUnlocked) {
+                    unlocked.push({
+                        ...achievement,
+                        unlockedAt: userAchievements.find(ua => ua.achievement_id === achievement.id)?.unlocked_at
+                    });
+                    totalPoints += achievement.points || 0;
+                } else {
+                    // Check if achievement should be unlocked
+                    const shouldUnlock = this.checkAchievementCondition(achievement, user);
+                    if (shouldUnlock) {
+                        // Auto-unlock achievement
+                        await this.unlockAchievement(user.id, achievement.id);
+                        unlocked.push({
+                            ...achievement,
+                            unlockedAt: new Date().toISOString()
+                        });
+                        totalPoints += achievement.points || 0;
+                    } else {
+                        locked.push(achievement);
+                    }
+                }
+            }
+            
             const achievements = {
-                unlocked: [],
-                locked: [],
-                totalPoints: 0,
-                unlockedCount: 0,
-                totalCount: 0
+                unlocked,
+                locked,
+                totalPoints,
+                unlockedCount: unlocked.length,
+                totalCount: (allAchievements || []).length
             };
             
             return { data: achievements, error: null };
         } catch (error) {
             console.error('Get achievements error:', error);
             return { data: null, error: 'Failed to fetch achievements' };
+        }
+    }
+
+    // Achievement koşulunu kontrol et
+    checkAchievementCondition(achievement, userStats) {
+        switch (achievement.condition_type) {
+            case 'total_games':
+                return (userStats.total_games || 0) >= achievement.condition_value;
+            case 'score':
+                return (userStats.score || 0) >= achievement.condition_value;
+            case 'best_time':
+                return userStats.best_time && userStats.best_time <= achievement.condition_value;
+            case 'current_streak':
+                return (userStats.current_streak || 0) >= achievement.condition_value;
+            case 'total_play_time':
+                return (userStats.total_play_time || 0) >= achievement.condition_value;
+            case 'created':
+                return true; // Early bird achievement - always unlocked for existing users
+            default:
+                return false;
+        }
+    }
+
+    // Achievement unlock
+    async unlockAchievement(userId, achievementId) {
+        try {
+            await this.supabase
+                .from('user_achievements')
+                .insert({
+                    user_id: userId,
+                    achievement_id: achievementId
+                });
+        } catch (error) {
+            console.error('Unlock achievement error:', error);
         }
     }
 

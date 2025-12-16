@@ -1,8 +1,7 @@
 -- CipherNode Game - Supabase Database Schema
 -- Run this in Supabase SQL Editor
 
--- Enable Row Level Security
-ALTER DATABASE postgres SET "app.jwt_secret" TO 'your-jwt-secret-here';
+-- Note: JWT secret is automatically managed by Supabase
 
 -- Users table
 CREATE TABLE IF NOT EXISTS users (
@@ -167,8 +166,21 @@ ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE game_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_achievements ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Users can view all profiles" ON users;
+DROP POLICY IF EXISTS "Users can insert new accounts" ON users;
+DROP POLICY IF EXISTS "Users can update own profile" ON users;
+DROP POLICY IF EXISTS "Anyone can read chat messages" ON chat_messages;
+DROP POLICY IF EXISTS "Authenticated users can send messages" ON chat_messages;
+DROP POLICY IF EXISTS "Anyone can read game sessions" ON game_sessions;
+DROP POLICY IF EXISTS "Users can insert own game sessions" ON game_sessions;
+DROP POLICY IF EXISTS "Anyone can read achievements" ON achievements;
+DROP POLICY IF EXISTS "Anyone can read user achievements" ON user_achievements;
+DROP POLICY IF EXISTS "Users can unlock own achievements" ON user_achievements;
+
 -- Users can read all user profiles but only update their own
 CREATE POLICY "Users can view all profiles" ON users FOR SELECT USING (true);
+CREATE POLICY "Users can insert new accounts" ON users FOR INSERT WITH CHECK (true);
 CREATE POLICY "Users can update own profile" ON users FOR UPDATE USING (auth.uid() = id);
 
 -- Chat messages are readable by all, writable by authenticated users
@@ -184,7 +196,4 @@ CREATE POLICY "Anyone can read achievements" ON achievements FOR SELECT USING (t
 CREATE POLICY "Anyone can read user achievements" ON user_achievements FOR SELECT USING (true);
 CREATE POLICY "Users can unlock own achievements" ON user_achievements FOR INSERT WITH CHECK (auth.uid() = user_id);
 
--- Enable real-time subscriptions
-ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE users;
-ALTER PUBLICATION supabase_realtime ADD TABLE game_sessions;
+-- Real-time subscriptions are already enabled for these tables
