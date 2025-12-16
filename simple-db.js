@@ -74,6 +74,7 @@ class SimpleDB {
                 email: email.toLowerCase().trim(),
                 password: hashedPassword,
                 score: 0,
+                level: 1, // Başlangıç level'ı
                 energy: this.initialEnergy,
                 lastEnergyUpdate: new Date().toISOString(),
                 created_at: new Date().toISOString(),
@@ -168,19 +169,32 @@ class SimpleDB {
         }
     }
 
-    // Kullanıcı ekleme/güncelleme (skor için)
-    async upsertPlayer(username, score = 0, email = '') {
+    // Kullanıcı ekleme/güncelleme (skor ve level için)
+    async upsertPlayer(username, score = 0, level = 1, email = '') {
         const existingIndex = this.players.findIndex(p => p.username === username);
         
         if (existingIndex >= 0) {
-            // Sadece skor daha yüksekse güncelle
+            let updated = false;
+            
+            // Skor daha yüksekse güncelle
             if (score > this.players[existingIndex].score) {
                 this.players[existingIndex].score = score;
+                updated = true;
+            }
+            
+            // Level daha yüksekse güncelle
+            if (level > (this.players[existingIndex].level || 1)) {
+                this.players[existingIndex].level = level;
+                updated = true;
+            }
+            
+            if (updated) {
                 this.saveData();
             }
+            
             return { data: this.players[existingIndex], error: null };
         } else {
-            // Bu fonksiyon artık sadece skor güncellemesi için kullanılacak
+            // Bu fonksiyon artık sadece skor/level güncellemesi için kullanılacak
             // Yeni kullanıcı kaydı registerUser ile yapılmalı
             return { data: null, error: 'User not found' };
         }

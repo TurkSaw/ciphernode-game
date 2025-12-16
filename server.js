@@ -411,8 +411,9 @@ io.on('connection', (socket) => {
         const { data: existingPlayer } = await db.findPlayer(username);
         
         if (existingPlayer) {
-            // Mevcut kullanıcının skorunu gönder
+            // Mevcut kullanıcının skorunu ve level'ını gönder
             socket.emit('sync score', existingPlayer.score);
+            socket.emit('sync level', existingPlayer.level || 1);
             
             // Enerji durumunu güncelle ve gönder
             const energyResult = await db.getPlayerEnergy(username);
@@ -463,7 +464,7 @@ io.on('connection', (socket) => {
         if(!socket.currentUser || !socket.isAuthenticated) return; // Block hackers
         
         try {
-            const { score, gameTime, won } = data;
+            const { score, level, gameTime, won } = data;
             
             // Validate score and game time
             if (!validator.isValidScore(score)) {
@@ -481,6 +482,12 @@ io.on('connection', (socket) => {
                 return;
             }
             
+            // Validate level
+            if (!Number.isInteger(level) || level < 1 || level > 1000) {
+                console.warn(`Invalid level from ${socket.currentUser}: ${level}`);
+                return;
+            }
+            
             // Anti-cheat: Check if score is reasonable for the time taken
             const maxScorePerSecond = 10; // Reasonable max score per second
             if (gameTime > 0 && score > (gameTime * maxScorePerSecond + 100)) {
@@ -495,8 +502,8 @@ io.on('connection', (socket) => {
             }
             socket.lastScoreSubmit = now;
             
-            // Skoru güncelle
-            await db.upsertPlayer(socket.currentUser, score, '');
+            // Skoru ve level'ı güncelle
+            await db.upsertPlayer(socket.currentUser, score, level);
             
             // Oyun istatistiklerini güncelle
             const gameResult = await db.updateGameStats(socket.currentUser, gameTime, won);

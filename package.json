@@ -11,6 +11,7 @@
     "start": "node server.js",
     "dev": "node server.js",
     "migrate": "node migrate-users.js",
+    "add-levels": "node add-level-to-users.js",
     "create-icons": "node create-icons.js",
     "pwa-audit": "echo 'Open Chrome DevTools > Lighthouse > PWA audit to test PWA features'",
     "test-offline": "echo 'Open DevTools > Network > Offline to test offline functionality'",

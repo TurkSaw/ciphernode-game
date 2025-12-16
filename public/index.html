@@ -2510,6 +2510,7 @@
     }
 
     socket.on('sync score', (s) => { if(s > points) points = s; updateUI(); });
+    socket.on('sync level', (l) => { if(l > level) level = l; updateUI(); });
     socket.on('sync energy', (data) => { 
         energy = data.energy; 
         nextEnergyIn = data.nextEnergyIn || 5;
@@ -2589,6 +2590,7 @@
         // Oyun istatistiklerini gönder
         socket.emit('submit score', {
             score: points,
+            level: level,
             gameTime: secondsElapsed,
             won: true
         });
