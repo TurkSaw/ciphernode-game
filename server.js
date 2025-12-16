@@ -9,11 +9,7 @@ const rateLimit = require('express-rate-limit');
 
 // Load environment variables from .env file
 require('dotenv').config(); 
-
-// Database selection based on environment
-// If DATABASE_URL exists, use PostgreSQL (production), otherwise use JSON (development)
-const usePostgreSQL = !!process.env.DATABASE_URL;
-const DB = usePostgreSQL ? require('./postgresql-db') : require('./simple-db');
+const SimpleDB = require('./simple-db');
 
 // Environment variables with defaults
 const PORT = process.env.PORT || 3000;
@@ -125,7 +121,7 @@ app.get('/health', async (req, res) => {
         res.status(200).json({
             status: 'healthy',
             timestamp: new Date().toISOString(),
-            database: usePostgreSQL ? 'postgresql' : 'json',
+            database: 'json',
             uptime: process.uptime()
         });
     } catch (error) {
@@ -140,18 +136,8 @@ app.get('/health', async (req, res) => {
 
 
 // --- DATABASE CONNECTION ---
-console.log("🔍 Database Configuration:");
-console.log("  DATABASE_URL exists:", !!process.env.DATABASE_URL);
-console.log("  USE_POSTGRESQL:", process.env.USE_POSTGRESQL);
-console.log("  Selected database:", usePostgreSQL ? "PostgreSQL" : "JSON");
-
-const db = new DB();
-if (usePostgreSQL) {
-    console.log("🐘 Using PostgreSQL Database");
-    console.log("  Connection string:", process.env.DATABASE_URL ? "SET" : "NOT SET");
-} else {
-    console.log("📄 Using JSON File Database");
-}
+const db = new SimpleDB();
+console.log("✅ Connected to Simple JSON Database");
 
 // --- INPUT VALIDATION HELPERS ---
 const validator = {
@@ -204,17 +190,10 @@ function authenticateToken(req, res, next) {
 // --- AUTH ROUTES ---
 app.post('/api/register', async (req, res) => {
     try {
-        console.log("📝 Registration attempt:", { 
-            username: req.body.username, 
-            email: req.body.email,
-            hasPassword: !!req.body.password 
-        });
-
         const { username, email, password } = req.body;
 
         // Input validation
         if (!username || !email || !password) {
-            console.log("❌ Missing required fields");
             return res.status(400).json({ error: 'Username, email and password are required' });
         }
 
