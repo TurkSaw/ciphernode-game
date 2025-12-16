@@ -119,28 +119,54 @@ app.get('/browserconfig.xml', (req, res) => {
 // Health check endpoint
 app.get('/health', async (req, res) => {
     try {
-        // Test database connection
-        const { error } = await db.findPlayer('health-check-user');
+        let dbStatus = 'unknown';
+        let dbError = null;
         
-        if (error) {
-            throw new Error(`Database connection failed: ${error}`);
+        if (dbConnectionHealthy) {
+            try {
+                // Test database connection
+                const { error } = await db.findPlayer('health-check-user');
+                dbStatus = error ? 'degraded' : 'healthy';
+                dbError = error;
+            } catch (testError) {
+                dbStatus = 'unhealthy';
+                dbError = testError.message;
+                dbConnectionHealthy = false;
+            }
+        } else {
+            dbStatus = 'unavailable';
+            dbError = 'Database connection not established';
         }
         
-        res.status(200).json({
-            status: 'healthy',
+        const healthData = {
+            status: dbConnectionHealthy ? 'healthy' : 'degraded',
             timestamp: new Date().toISOString(),
-            database: useSupabase ? 'supabase' : 'json',
+            database: {
+                type: useSupabase ? 'supabase' : 'json',
+                status: dbStatus,
+                error: dbError
+            },
             uptime: Math.floor(process.uptime()),
             memory: {
                 used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
                 total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024)
+            },
+            features: {
+                authentication: dbConnectionHealthy,
+                chat: dbConnectionHealthy,
+                leaderboard: dbConnectionHealthy,
+                gameProgress: dbConnectionHealthy
             }
-        });
+        };
+        
+        const statusCode = dbConnectionHealthy ? 200 : 503;
+        res.status(statusCode).json(healthData);
+        
     } catch (error) {
         console.error('Health check failed:', error.message);
         res.status(503).json({
-            status: 'unhealthy',
-            error: 'Service temporarily unavailable',
+            status: 'critical',
+            error: 'Health check system failure',
             timestamp: new Date().toISOString(),
             uptime: Math.floor(process.uptime())
         });
@@ -151,31 +177,62 @@ app.get('/health', async (req, res) => {
 
 // --- DATABASE CONNECTION ---
 let db;
+let dbConnectionHealthy = false;
 
-if (useSupabase) {
-    db = new SupabaseDB();
-    if (db) {
-        console.log("🚀 Using Supabase Database");
-    } else {
-        console.log("⚠️  Supabase failed, falling back to JSON Database");
+async function initializeDatabase() {
+    try {
+        if (useSupabase) {
+            console.log("🔄 Attempting Supabase connection...");
+            db = new SupabaseDB();
+            
+            if (db) {
+                // Test Supabase connection
+                try {
+                    await db.initDatabase();
+                    dbConnectionHealthy = true;
+                    console.log("🚀 Using Supabase Database");
+                    return;
+                } catch (supabaseError) {
+                    console.error("❌ Supabase connection failed:", supabaseError.message);
+                    console.log("⚠️  Falling back to JSON Database");
+                }
+            }
+        }
+        
+        // Fallback to JSON database
         db = new SimpleDB();
+        dbConnectionHealthy = true;
+        console.log("📄 Using JSON File Database");
         
         // --- AUTO MIGRATION FOR JSON ---
         const migrateChatFormat = require('./migrate-chat-format');
         const addLevelToUsers = require('./add-level-to-users');
         migrateChatFormat();
         addLevelToUsers();
+        
+    } catch (error) {
+        console.error("💥 Critical database initialization error:", error.message);
+        dbConnectionHealthy = false;
+        
+        // Create a minimal fallback database interface
+        db = {
+            async registerUser() { return { data: null, error: 'Database unavailable' }; },
+            async loginUser() { return { data: null, error: 'Database unavailable' }; },
+            async findPlayer() { return { data: null, error: 'Database unavailable' }; },
+            async getLeaderboard() { return { data: [], error: 'Database unavailable' }; },
+            async saveChatMessage() { return { data: null, error: 'Database unavailable' }; },
+            async getChatMessages() { return { data: [], error: 'Database unavailable' }; },
+            verifyToken() { return { data: null, error: 'Database unavailable' }; }
+        };
+        
+        console.log("🆘 Running in emergency mode with limited functionality");
     }
-} else {
-    db = new SimpleDB();
-    console.log("📄 Using JSON File Database");
-    
-    // --- AUTO MIGRATION FOR JSON ---
-    const migrateChatFormat = require('./migrate-chat-format');
-    const addLevelToUsers = require('./add-level-to-users');
-    migrateChatFormat();
-    addLevelToUsers();
 }
+
+// Initialize database with error handling
+initializeDatabase().catch(error => {
+    console.error("🚨 Failed to initialize database:", error.message);
+});
 
 // --- INPUT VALIDATION HELPERS ---
 const validator = {
@@ -454,31 +511,61 @@ io.on('connection', (socket) => {
         socket.userId = decoded.userId;
         socket.isAuthenticated = true;
         
-        console.log(`✅ User authenticated and joined: ${decoded.username}`);
+        // Update connected users count
+        connectedUsers++;
+        
+        console.log(`✅ User authenticated and joined: ${decoded.username} (${connectedUsers} users online)`);
         finalizeJoin(socket, decoded.username);
     });
 
     // Helper to finish the join process after auth success
     async function finalizeJoin(socket, username) {
         try {
+            // Check database health before proceeding
+            if (!dbConnectionHealthy) {
+                socket.emit('auth_error', 'Database temporarily unavailable. Please try again later.');
+                return;
+            }
+            
             // Sistem mesajını kaydet ve gönder
-            await db.saveChatMessage('System', `${username} connected to node.`);
-            socket.broadcast.emit('chat message', { 
-                user: 'System', 
-                text: `${username} connected to node.` 
-            });
+            try {
+                await db.saveChatMessage('System', `${username} connected to node.`);
+                socket.broadcast.emit('chat message', { 
+                    user: 'System', 
+                    text: `${username} connected to node.` 
+                });
+            } catch (chatError) {
+                console.error(`Failed to save connection message for ${username}:`, chatError.message);
+                // Continue without chat message - not critical
+            }
             
             // Kullanıcıya son chat mesajlarını gönder
-            const { data: chatHistory, error: chatError } = await db.getChatMessages(20); // Son 20 mesaj
-            if (chatError) {
-                console.error(`Failed to load chat history for ${username}:`, chatError);
-            } else if (chatHistory && chatHistory.length > 0) {
-                chatHistory.forEach(msg => {
+            try {
+                const { data: chatHistory, error: chatError } = await db.getChatMessages(20); // Son 20 mesaj
+                if (chatError) {
+                    console.error(`Failed to load chat history for ${username}:`, chatError);
+                    // Send a default message instead
                     socket.emit('chat message', { 
-                        user: msg.username, 
-                        text: msg.message,
-                        timestamp: msg.timestamp 
+                        user: 'System', 
+                        text: 'Welcome to CipherNode! Chat history temporarily unavailable.',
+                        timestamp: new Date().toISOString()
                     });
+                } else if (chatHistory && chatHistory.length > 0) {
+                    chatHistory.forEach(msg => {
+                        socket.emit('chat message', { 
+                            user: msg.username, 
+                            text: msg.message,
+                            timestamp: msg.timestamp 
+                        });
+                    });
+                }
+            } catch (chatError) {
+                console.error(`Critical chat error for ${username}:`, chatError.message);
+                // Send fallback message
+                socket.emit('chat message', { 
+                    user: 'System', 
+                    text: 'Welcome to CipherNode!',
+                    timestamp: new Date().toISOString()
                 });
             }
             
@@ -689,6 +776,9 @@ io.on('connection', (socket) => {
         if(socket.currentUser) {
             console.log(`${socket.currentUser} disconnected`);
             
+            // Update connected users count
+            connectedUsers = Math.max(0, connectedUsers - 1);
+            
             // Cleanup timers and intervals to prevent memory leaks
             if (socket.energyTimer) {
                 clearInterval(socket.energyTimer);
@@ -707,17 +797,25 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Leaderboard caching
+    // Leaderboard caching with adaptive duration
     let leaderboardCache = null;
     let lastLeaderboardUpdate = 0;
-    const LEADERBOARD_CACHE_DURATION = 30000; // 30 seconds
+    let connectedUsers = 0;
+    
+    // Adaptive cache duration based on activity
+    function getLeaderboardCacheDuration() {
+        if (connectedUsers > 10) return 15000; // 15 seconds for high activity
+        if (connectedUsers > 5) return 30000;  // 30 seconds for medium activity
+        return 60000; // 1 minute for low activity
+    }
 
     async function updateLeaderboard(forceUpdate = false) {
         try {
             const now = Date.now();
+            const cacheDuration = getLeaderboardCacheDuration();
             
             // Use cache if available and not expired
-            if (!forceUpdate && leaderboardCache && (now - lastLeaderboardUpdate) < LEADERBOARD_CACHE_DURATION) {
+            if (!forceUpdate && leaderboardCache && (now - lastLeaderboardUpdate) < cacheDuration) {
                 io.emit('update leaderboard', leaderboardCache);
                 return;
             }

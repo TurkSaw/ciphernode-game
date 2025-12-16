@@ -309,6 +309,55 @@
             }
         }
 
+        /* Ultra small screens (320px and below) */
+        @media (max-width: 320px) {
+            .cell {
+                width: 32px;
+                height: 32px;
+                border-radius: 6px;
+            }
+
+            .cell.active::after {
+                font-size: 14px;
+            }
+
+            .grid {
+                gap: 2px;
+                padding: 8px;
+            }
+
+            .game-title {
+                font-size: 16px;
+                margin-bottom: 8px;
+            }
+
+            .game-timer {
+                font-size: 14px;
+                margin-bottom: 12px;
+            }
+
+            #game-area {
+                padding: 8px;
+            }
+
+            .btn {
+                padding: 10px 16px;
+                font-size: 12px;
+                min-height: 44px;
+            }
+        }
+
+        /* iOS Safari viewport fix */
+        @supports (-webkit-touch-callout: none) {
+            body {
+                height: -webkit-fill-available;
+            }
+            
+            #app-container {
+                height: -webkit-fill-available;
+            }
+        }
+
         /* Sidebar Mobile Responsive */
         @media (max-width: 768px) {
             .sidebar {
@@ -2310,6 +2359,25 @@
         document.querySelectorAll('.error-msg').forEach(e => e.style.display = 'none');
     }
 
+    // --- GLOBAL ERROR HANDLING ---
+    window.addEventListener('error', (event) => {
+        console.error('Global error:', event.error);
+        showNotification('An unexpected error occurred. Please refresh if issues persist.', 'error');
+        
+        // Log error details for debugging
+        if (event.error && event.error.stack) {
+            console.error('Error stack:', event.error.stack);
+        }
+    });
+
+    window.addEventListener('unhandledrejection', (event) => {
+        console.error('Unhandled promise rejection:', event.reason);
+        showNotification('A network error occurred. Please check your connection.', 'error');
+        
+        // Prevent the default browser behavior
+        event.preventDefault();
+    });
+
     // --- AUTO LOGIN CHECK ---
     window.addEventListener('load', () => {
         const token = localStorage.getItem('authToken');
@@ -2633,24 +2701,78 @@
         }, 2000);
     });
     
-    // Socket connection error handling
+    // Enhanced Socket connection handling
+    let reconnectAttempts = 0;
+    let maxReconnectAttempts = 5;
+    let reconnectDelay = 1000; // Start with 1 second
+    let isReconnecting = false;
+    
+    socket.on('connect', () => {
+        console.log('Socket connected');
+        reconnectAttempts = 0;
+        reconnectDelay = 1000;
+        isReconnecting = false;
+        
+        // Re-authenticate if we have a token
+        const token = localStorage.getItem('authToken');
+        if (token && document.getElementById('app-container').style.display !== 'none') {
+            const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+            socket.emit('join game', { token: token });
+            showNotification('Connection restored!', 'success');
+        }
+    });
+    
     socket.on('connect_error', (error) => {
         console.error('Socket connection error:', error);
-        showNotification('Connection error. Retrying...', 'error');
+        
+        if (!isReconnecting) {
+            isReconnecting = true;
+            showNotification('Connection lost. Attempting to reconnect...', 'error');
+        }
+        
+        reconnectAttempts++;
+        
+        if (reconnectAttempts >= maxReconnectAttempts) {
+            showNotification('Connection failed. Please refresh the page.', 'error');
+            isReconnecting = false;
+        } else {
+            // Exponential backoff
+            reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
+            setTimeout(() => {
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    console.log(`Reconnection attempt ${reconnectAttempts}/${maxReconnectAttempts}`);
+                    socket.connect();
+                }
+            }, reconnectDelay);
+        }
     });
     
     socket.on('disconnect', (reason) => {
         console.warn('Socket disconnected:', reason);
+        
         if (reason === 'io server disconnect') {
             // Server disconnected, try to reconnect
             showNotification('Server disconnected. Reconnecting...', 'error');
+            isReconnecting = true;
             socket.connect();
+        } else if (reason === 'transport close' || reason === 'transport error') {
+            // Network issues
+            showNotification('Network connection lost. Reconnecting...', 'error');
+            isReconnecting = true;
         }
     });
     
     socket.on('reconnect', (attemptNumber) => {
         console.log('Socket reconnected after', attemptNumber, 'attempts');
+        reconnectAttempts = 0;
+        isReconnecting = false;
         showNotification('Connection restored!', 'success');
+    });
+    
+    socket.on('reconnect_failed', () => {
+        console.error('Socket reconnection failed');
+        isReconnecting = false;
+        showNotification('Unable to reconnect. Please refresh the page.', 'error');
     });
 
     function startGame() {

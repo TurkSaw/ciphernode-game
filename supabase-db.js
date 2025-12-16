@@ -31,13 +31,17 @@ class SupabaseDB {
 
     async initDatabase() {
         try {
-            // Test connection
+            // Test connection with a simple query
             const { error } = await this.supabase.from('users').select('count').limit(1);
-            if (error) throw error;
+            if (error) {
+                throw new Error(`Supabase connection test failed: ${error.message}`);
+            }
             
             console.log('✅ Connected to Supabase Database');
+            return true;
         } catch (error) {
             console.error('❌ Supabase connection failed:', error.message);
+            throw error; // Re-throw to allow fallback handling
         }
     }
 

@@ -167,23 +167,99 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle static resources - cache for performance only
+  // Handle static resources - cache-first for better performance
   event.respondWith(
-    fetch(request)
-      .then((response) => {
-        // Cache successful responses for faster loading
-        if (response && response.status === 200 && response.type === 'basic') {
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME)
-            .then((cache) => {
-              cache.put(request, responseToCache);
+    caches.match(request)
+      .then((cachedResponse) => {
+        // Return cached version if available
+        if (cachedResponse) {
+          // Update cache in background for next time
+          fetch(request)
+            .then((response) => {
+              if (response && response.status === 200 && response.type === 'basic') {
+                const responseToCache = response.clone();
+                caches.open(CACHE_NAME)
+                  .then((cache) => {
+                    cache.put(request, responseToCache);
+                  });
+              }
+            })
+            .catch(() => {
+              // Ignore background update errors
             });
+          
+          return cachedResponse;
         }
-        return response;
-      })
-      .catch(() => {
-        // Try cache only for static resources as fallback
-        return caches.match(request);
+        
+        // If not in cache, fetch from network
+        return fetch(request)
+          .then((response) => {
+            // Cache successful responses for faster loading
+            if (response && response.status === 200 && response.type === 'basic') {
+              const responseToCache = response.clone();
+              caches.open(CACHE_NAME)
+                .then((cache) => {
+                  cache.put(request, responseToCache);
+                });
+            }
+            return response;
+          })
+          .catch(() => {
+            // Network failed and no cache - return offline page for HTML requests
+            if (request.headers.get('accept').includes('text/html')) {
+              return new Response(
+                `<!DOCTYPE html>
+                <html>
+                <head>
+                  <title>CipherNode - Offline</title>
+                  <meta charset="UTF-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <style>
+                    body { 
+                      font-family: Arial, sans-serif; 
+                      background: #0a0a0f; 
+                      color: #f8fafc; 
+                      text-align: center; 
+                      padding: 50px 20px; 
+                    }
+                    .error-container { max-width: 400px; margin: 0 auto; }
+                    .error-icon { font-size: 60px; margin-bottom: 20px; }
+                    .error-title { color: #ef4444; font-size: 24px; margin-bottom: 16px; }
+                    .error-message { color: #94a3b8; margin-bottom: 30px; }
+                    .retry-btn { 
+                      background: #00ff88; 
+                      color: #0a0a0f; 
+                      border: none; 
+                      padding: 12px 24px; 
+                      border-radius: 8px; 
+                      cursor: pointer; 
+                      font-weight: 600;
+                    }
+                  </style>
+                </head>
+                <body>
+                  <div class="error-container">
+                    <div class="error-icon">📡</div>
+                    <h1 class="error-title">You're Offline</h1>
+                    <p class="error-message">CipherNode requires an internet connection for multiplayer features.</p>
+                    <button class="retry-btn" onclick="window.location.reload()">Try Again</button>
+                  </div>
+                </body>
+                </html>`,
+                {
+                  status: 503,
+                  statusText: 'Service Unavailable',
+                  headers: { 'Content-Type': 'text/html' }
+                }
+              );
+            }
+            
+            // For other requests, return a generic error
+            return new Response('Offline', {
+              status: 503,
+              statusText: 'Service Unavailable'
+            });
+          });
       })
   );
 });
