@@ -21,19 +21,36 @@ class SimpleDB {
         try {
             if (fs.existsSync(this.dbPath)) {
                 const data = fs.readFileSync(this.dbPath, 'utf8');
-                this.players = JSON.parse(data);
+                const parsedData = JSON.parse(data);
+                
+                // Backward compatibility - eğer array ise (eski format)
+                if (Array.isArray(parsedData)) {
+                    this.players = parsedData;
+                    this.chatMessages = [];
+                } else {
+                    // Yeni format - object with players and chatMessages
+                    this.players = parsedData.players || [];
+                    this.chatMessages = parsedData.chatMessages || [];
+                }
             } else {
                 this.players = [];
+                this.chatMessages = [];
             }
         } catch (error) {
             console.log('DB Load Error:', error.message);
             this.players = [];
+            this.chatMessages = [];
         }
     }
 
     saveData() {
         try {
-            fs.writeFileSync(this.dbPath, JSON.stringify(this.players, null, 2));
+            const dataToSave = {
+                players: this.players,
+                chatMessages: this.chatMessages || [],
+                lastUpdated: new Date().toISOString()
+            };
+            fs.writeFileSync(this.dbPath, JSON.stringify(dataToSave, null, 2));
         } catch (error) {
             console.log('DB Save Error:', error.message);
         }
@@ -566,6 +583,68 @@ class SimpleDB {
         }
 
         return { data: achievements, error: null };
+    }
+
+    // --- CHAT SYSTEM ---
+    
+    // Chat mesajı kaydetme
+    async saveChatMessage(username, message) {
+        try {
+            if (!this.chatMessages) {
+                this.chatMessages = [];
+            }
+
+            const chatMessage = {
+                id: Date.now() + Math.random(),
+                username: username,
+                message: message.trim(),
+                timestamp: new Date().toISOString(),
+                type: username === 'System' ? 'system' : 'user'
+            };
+
+            this.chatMessages.push(chatMessage);
+
+            // Son 100 mesajı tut (memory management)
+            if (this.chatMessages.length > 100) {
+                this.chatMessages = this.chatMessages.slice(-100);
+            }
+
+            this.saveData();
+            return { data: chatMessage, error: null };
+
+        } catch (error) {
+            console.error('Save chat message error:', error);
+            return { data: null, error: 'Failed to save message' };
+        }
+    }
+
+    // Son chat mesajlarını getir
+    async getChatMessages(limit = 50) {
+        try {
+            if (!this.chatMessages) {
+                this.chatMessages = [];
+            }
+
+            // Son N mesajı döndür
+            const messages = this.chatMessages.slice(-limit);
+            return { data: messages, error: null };
+
+        } catch (error) {
+            console.error('Get chat messages error:', error);
+            return { data: [], error: 'Failed to fetch messages' };
+        }
+    }
+
+    // Chat mesajlarını temizle (admin fonksiyonu)
+    async clearChatMessages() {
+        try {
+            this.chatMessages = [];
+            this.saveData();
+            return { data: true, error: null };
+        } catch (error) {
+            console.error('Clear chat messages error:', error);
+            return { data: false, error: 'Failed to clear messages' };
+        }
     }
 }
 

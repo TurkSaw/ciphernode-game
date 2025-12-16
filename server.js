@@ -140,9 +140,12 @@ const db = new SimpleDB();
 console.log("✅ Connected to Simple JSON Database");
 
 // --- AUTO MIGRATION ---
-// Automatically add level field to existing users
+// Automatically migrate database format and add level field to existing users
+const migrateChatFormat = require('./migrate-chat-format');
 const addLevelToUsers = require('./add-level-to-users');
-addLevelToUsers();
+
+migrateChatFormat(); // Convert to new format first
+addLevelToUsers();   // Then add levels
 
 // --- INPUT VALIDATION HELPERS ---
 const validator = {
@@ -407,10 +410,24 @@ io.on('connection', (socket) => {
 
     // Helper to finish the join process after auth success
     async function finalizeJoin(socket, username) {
+        // Sistem mesajını kaydet ve gönder
+        await db.saveChatMessage('System', `${username} connected to node.`);
         socket.broadcast.emit('chat message', { 
             user: 'System', 
             text: `${username} connected to node.` 
         });
+        
+        // Kullanıcıya son chat mesajlarını gönder
+        const { data: chatHistory } = await db.getChatMessages(20); // Son 20 mesaj
+        if (chatHistory && chatHistory.length > 0) {
+            chatHistory.forEach(msg => {
+                socket.emit('chat message', { 
+                    user: msg.username, 
+                    text: msg.message,
+                    timestamp: msg.timestamp 
+                });
+            });
+        }
         
         // Kullanıcıyı veritabanına ekle veya skoru getir
         const { data: existingPlayer } = await db.findPlayer(username);
@@ -464,6 +481,11 @@ io.on('connection', (socket) => {
         }
         
         socket.lastMessages.push(now);
+        
+        // Mesajı database'e kaydet
+        db.saveChatMessage(socket.currentUser, cleanMsg);
+        
+        // Tüm kullanıcılara gönder
         io.emit('chat message', { user: socket.currentUser, text: cleanMsg });
     });
 
@@ -595,9 +617,11 @@ setInterval(async () => {
                 if (result.data && result.data.energyAdded > 0) {
                     // Enerji yenilendiyse oyuncuya bildir
                     socket.emit('sync energy', result.data);
+                    const energyMsg = `Energy regenerated! +${result.data.energyAdded} energy`;
+                    db.saveChatMessage('System', energyMsg);
                     socket.emit('chat message', { 
                         user: 'System', 
-                        text: `Energy regenerated! +${result.data.energyAdded} energy` 
+                        text: energyMsg 
                     });
                 }
             } catch (err) {
