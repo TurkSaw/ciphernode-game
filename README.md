@@ -1,6 +1,6 @@
 # 🎮 CipherNode Game
 
-Real-time multiplayer cyberpunk puzzle game built with Node.js, Socket.IO and JSON database.
+Real-time multiplayer cyberpunk puzzle game built with Node.js, Socket.IO and Supabase database.
 
 [🇺🇸 English](#english) | [🇹🇷 Türkçe](#turkish)
 
@@ -24,7 +24,7 @@ Real-time multiplayer cyberpunk puzzle game built with Node.js, Socket.IO and JS
 
 - **Backend**: Node.js, Express.js, Socket.IO
 - **Frontend**: Vanilla JavaScript, CSS3
-- **Database**: JSON file-based (SimpleDB)
+- **Database**: Supabase (PostgreSQL)
 - **Real-time**: WebSocket connections
 - **Authentication**: JWT (jsonwebtoken) + bcrypt password hashing
 - **Security**: Token-based authentication with auto-expiration
@@ -42,10 +42,10 @@ Real-time multiplayer cyberpunk puzzle game built with Node.js, Socket.IO and JS
    npm install
    ```
 
-3. **Migrate existing users** (if any):
-   ```bash
-   npm run migrate
-   ```
+3. **Configure Supabase**:
+   - Copy `.env.example` to `.env`
+   - Set your Supabase URL and API key
+   - Run the SQL schema in Supabase dashboard
 
 4. **Start the server**:
    ```bash
@@ -71,21 +71,23 @@ Real-time multiplayer cyberpunk puzzle game built with Node.js, Socket.IO and JS
 
 ```
 ciphernode/
-├── server.js          # Main server file
-├── simple-db.js       # JSON database system
-├── package.json       # Project dependencies
-├── .env              # Environment variables
+├── server.js              # Main server file
+├── supabase-db.js         # Supabase database system
+├── supabase-schema.sql    # Database schema
+├── package.json           # Project dependencies
+├── .env                   # Environment variables
 ├── public/
-│   └── index.html    # Frontend (SPA)
-└── players.json      # Player data (auto-generated)
+│   └── index.html        # Frontend (SPA)
+└── reset-database-stats.js # Database reset utility
 ```
 
 ### 🔧 Development
 
-#### Database (SimpleDB)
-- JSON file-based simple database
-- Stores player information and scores
-- Automatic backup and error handling
+#### Database (Supabase)
+- PostgreSQL-based cloud database
+- Real-time subscriptions and updates
+- Built-in authentication and security
+- Automatic scaling and backups
 
 #### Socket Events
 - `join game`: Player connection
@@ -160,7 +162,7 @@ This project is released under the MIT License.
 
 - **Backend**: Node.js, Express.js, Socket.IO
 - **Frontend**: Vanilla JavaScript, CSS3
-- **Veritabanı**: JSON dosya tabanlı (SimpleDB)
+- **Veritabanı**: Supabase (PostgreSQL)
 - **Gerçek Zamanlı**: WebSocket bağlantıları
 
 ### 📦 Kurulum
@@ -197,10 +199,11 @@ This project is released under the MIT License.
 
 ### 🔧 Geliştirme
 
-#### Veritabanı (SimpleDB)
-- JSON dosya tabanlı basit veritabanı
-- Oyuncu bilgileri ve skorları saklar
-- Otomatik yedekleme ve hata yönetimi
+#### Veritabanı (Supabase)
+- PostgreSQL tabanlı bulut veritabanı
+- Gerçek zamanlı abonelikler ve güncellemeler
+- Yerleşik kimlik doğrulama ve güvenlik
+- Otomatik ölçeklendirme ve yedekleme
 
 #### Socket Events
 - `join game`: Oyuncu bağlantısı

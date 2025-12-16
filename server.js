@@ -17,27 +17,21 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app); 
 
-// Database selection based on environment
-const useSupabase = process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY;
-
-// Dynamic imports for database modules
-async function loadDatabaseModules() {
-    let SupabaseDB = null;
-    let SimpleDB = null;
-
-    if (useSupabase) {
-        const { default: SupabaseDBClass } = await import('./supabase-db.js');
-        SupabaseDB = SupabaseDBClass;
-    }
-    const { default: SimpleDBClass } = await import('./simple-db.js');
-    SimpleDB = SimpleDBClass;
-
-    return { SupabaseDB, SimpleDB };
+// Supabase-only database configuration
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+    console.error('❌ CRITICAL: SUPABASE_URL and SUPABASE_ANON_KEY must be configured!');
+    console.error('Please check your .env file and ensure Supabase credentials are set.');
+    process.exit(1);
 }
 
-// Initialize database modules
+// Dynamic import for Supabase database module
+async function loadDatabaseModule() {
+    const { default: SupabaseDBClass } = await import('./supabase-db.js');
+    return SupabaseDBClass;
+}
+
+// Initialize database module
 let SupabaseDB = null;
-let SimpleDB = null;
 
 // Environment variables with defaults
 const PORT = process.env.PORT || 3000;
@@ -166,7 +160,7 @@ app.get('/health', async (req, res) => {
             status: dbConnectionHealthy ? 'healthy' : 'degraded',
             timestamp: new Date().toISOString(),
             database: {
-                type: useSupabase ? 'supabase' : 'json',
+                type: 'supabase',
                 status: dbStatus,
                 error: dbError
             },
@@ -205,60 +199,44 @@ let dbConnectionHealthy = false;
 
 async function initializeDatabase() {
     try {
-        // Load database modules first
-        const modules = await loadDatabaseModules();
-        SupabaseDB = modules.SupabaseDB;
-        SimpleDB = modules.SimpleDB;
-
-        if (useSupabase && SupabaseDB) {
-            console.log("🔄 Attempting Supabase connection...");
-            db = new SupabaseDB();
-            
-            if (db) {
-                // Test Supabase connection
-                try {
-                    await db.initDatabase();
-                    dbConnectionHealthy = true;
-                    console.log("🚀 Using Supabase Database");
-                    return;
-                } catch (supabaseError) {
-                    console.error("❌ Supabase connection failed:", supabaseError.message);
-                    console.log("⚠️  Falling back to JSON Database");
-                }
-            }
+        // Load Supabase database module
+        SupabaseDB = await loadDatabaseModule();
+        
+        console.log("🔄 Initializing Supabase connection...");
+        db = new SupabaseDB();
+        
+        if (!db) {
+            throw new Error('Failed to create Supabase database instance');
         }
         
-        // Fallback to JSON database
-        db = new SimpleDB();
+        // Test Supabase connection
+        await db.initDatabase();
         dbConnectionHealthy = true;
-        console.log("📄 Using JSON File Database");
-        
-        // --- AUTO MIGRATION FOR JSON ---
-        try {
-            const { default: migrateChatFormat } = await import('./migrate-chat-format.js');
-            const { default: addLevelToUsers } = await import('./add-level-to-users.js');
-            migrateChatFormat();
-            addLevelToUsers();
-        } catch (migrationError) {
-            console.warn('Migration warning:', migrationError.message);
-        }
+        console.log("🚀 Successfully connected to Supabase Database");
         
     } catch (error) {
-        console.error("💥 Critical database initialization error:", error.message);
+        console.error("💥 Critical Supabase initialization error:", error.message);
+        console.error("Please check your Supabase configuration and network connection.");
         dbConnectionHealthy = false;
         
-        // Create a minimal fallback database interface
+        // Create a minimal fallback database interface for graceful degradation
         db = {
-            async registerUser() { return { data: null, error: 'Database unavailable' }; },
-            async loginUser() { return { data: null, error: 'Database unavailable' }; },
-            async findPlayer() { return { data: null, error: 'Database unavailable' }; },
-            async getLeaderboard() { return { data: [], error: 'Database unavailable' }; },
-            async saveChatMessage() { return { data: null, error: 'Database unavailable' }; },
-            async getChatMessages() { return { data: [], error: 'Database unavailable' }; },
-            verifyToken() { return { data: null, error: 'Database unavailable' }; }
+            async registerUser() { return { data: null, error: 'Supabase connection unavailable' }; },
+            async loginUser() { return { data: null, error: 'Supabase connection unavailable' }; },
+            async findPlayer() { return { data: null, error: 'Supabase connection unavailable' }; },
+            async getLeaderboard() { return { data: [], error: 'Supabase connection unavailable' }; },
+            async saveChatMessage() { return { data: null, error: 'Supabase connection unavailable' }; },
+            async getChatMessages() { return { data: [], error: 'Supabase connection unavailable' }; },
+            verifyToken() { return { data: null, error: 'Supabase connection unavailable' }; }
         };
         
-        console.log("🆘 Running in emergency mode with limited functionality");
+        console.log("🆘 Running in emergency mode - please fix Supabase configuration");
+        
+        // Exit in production to prevent running with broken database
+        if (NODE_ENV === 'production') {
+            console.error("🚨 Exiting in production mode due to database failure");
+            process.exit(1);
+        }
     }
 }
 

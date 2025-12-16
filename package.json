@@ -11,10 +11,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "dev:supabase": "USE_SUPABASE=true node server.js",
-    "migrate": "node migrate-users.js",
-    "add-levels": "node add-level-to-users.js",
-    "migrate-chat": "node migrate-chat-format.js",
+    "reset-stats": "node reset-database-stats.js",
     "create-icons": "node create-icons.js",
     "pwa-audit": "echo 'Open Chrome DevTools > Lighthouse > PWA audit to test PWA features'",
     "test-offline": "echo 'Open DevTools > Network > Offline to test offline functionality'",
