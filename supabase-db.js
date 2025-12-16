@@ -1,0 +1,532 @@
+const { createClient } = require('@supabase/supabase-js');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+class SupabaseDB {
+    constructor() {
+        // Supabase configuration
+        this.supabaseUrl = process.env.SUPABASE_URL;
+        this.supabaseKey = process.env.SUPABASE_ANON_KEY;
+        
+        if (!this.supabaseUrl || !this.supabaseKey) {
+            console.warn('⚠️  Supabase credentials not found, falling back to JSON database');
+            return null;
+        }
+        
+        this.supabase = createClient(this.supabaseUrl, this.supabaseKey);
+        
+        this.bcryptRounds = parseInt(process.env.BCRYPT_ROUNDS) || 10;
+        this.jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
+        this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
+        this.maxEnergy = parseInt(process.env.MAX_ENERGY) || 100;
+        this.initialEnergy = parseInt(process.env.INITIAL_ENERGY) || 100;
+        
+        this.initDatabase();
+    }
+
+    async initDatabase() {
+        try {
+            // Test connection
+            const { data, error } = await this.supabase.from('users').select('count').limit(1);
+            if (error) throw error;
+            
+            console.log('✅ Connected to Supabase Database');
+        } catch (error) {
+            console.error('❌ Supabase connection failed:', error.message);
+        }
+    }
+
+    // Kullanıcı kayıt
+    async registerUser(username, email, password) {
+        try {
+            // Input validation
+            if (!username || !email || !password) {
+                return { data: null, error: 'All fields are required' };
+            }
+
+            if (typeof username !== 'string' || typeof email !== 'string' || typeof password !== 'string') {
+                return { data: null, error: 'Invalid input types' };
+            }
+
+            // Check if user exists
+            const { data: existingUser } = await this.supabase
+                .from('users')
+                .select('id')
+                .or(`username.eq.${username},email.eq.${email.toLowerCase()}`)
+                .limit(1);
+            
+            if (existingUser && existingUser.length > 0) {
+                return { data: null, error: 'Username or email already exists' };
+            }
+
+            // Hash password
+            const hashedPassword = await bcrypt.hash(password, this.bcryptRounds);
+            
+            // Insert user
+            const { data: newUser, error } = await this.supabase
+                .from('users')
+                .insert({
+                    username: username.trim(),
+                    email: email.toLowerCase().trim(),
+                    password: hashedPassword,
+                    display_name: username.trim(),
+                    energy: this.initialEnergy,
+                    level: 1
+                })
+                .select()
+                .single();
+            
+            if (error) throw error;
+            
+            // Remove password from response
+            const { password: _, ...userData } = newUser;
+            return { data: userData, error: null };
+            
+        } catch (error) {
+            console.error('Registration error:', error);
+            return { data: null, error: 'Registration failed' };
+        }
+    }
+
+    // Kullanıcı giriş
+    async loginUser(email, password) {
+        try {
+            // Input validation
+            if (!email || !password) {
+                return { data: null, error: 'Email and password are required' };
+            }
+
+            if (typeof email !== 'string' || typeof password !== 'string') {
+                return { data: null, error: 'Invalid input types' };
+            }
+
+            // Find user
+            const { data: user, error } = await this.supabase
+                .from('users')
+                .select('*')
+                .eq('email', email.toLowerCase())
+                .single();
+            
+            if (error || !user) {
+                return { data: null, error: 'Invalid email or password' };
+            }
+
+            // Verify password
+            const isValidPassword = await bcrypt.compare(password, user.password);
+            if (!isValidPassword) {
+                return { data: null, error: 'Invalid email or password' };
+            }
+
+            // Generate JWT token
+            const token = jwt.sign(
+                { 
+                    userId: user.id, 
+                    username: user.username,
+                    email: user.email 
+                },
+                this.jwtSecret,
+                { expiresIn: this.jwtExpiresIn }
+            );
+
+            // Update last login
+            await this.supabase
+                .from('users')
+                .update({ updated_at: new Date().toISOString() })
+                .eq('id', user.id);
+
+            // Remove password from response
+            const { password: _, ...userData } = user;
+            return { 
+                data: { 
+                    user: userData, 
+                    token 
+                }, 
+                error: null 
+            };
+            
+        } catch (error) {
+            console.error('Login error:', error);
+            return { data: null, error: 'Login failed' };
+        }
+    }
+
+    // Token doğrulama
+    verifyToken(token) {
+        try {
+            const decoded = jwt.verify(token, this.jwtSecret);
+            return { data: decoded, error: null };
+        } catch (error) {
+            return { data: null, error: 'Invalid token' };
+        }
+    }
+
+    // Skor ve level güncelleme
+    async upsertPlayer(username, score = 0, level = 1) {
+        try {
+            const { data: user, error } = await this.supabase
+                .from('users')
+                .update({
+                    score: score,
+                    level: level,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('username', username)
+                .select()
+                .single();
+            
+            if (error) throw error;
+            
+            const { password, ...userData } = user;
+            return { data: userData, error: null };
+            
+        } catch (error) {
+            console.error('Score update error:', error);
+            return { data: null, error: 'Score update failed' };
+        }
+    }
+
+    // Enerji güncelleme
+    async updatePlayerEnergy(username, energyChange) {
+        try {
+            // Get current user data
+            const { data: user, error: userError } = await this.supabase
+                .from('users')
+                .select('id, energy, last_energy_update')
+                .eq('username', username)
+                .single();
+            
+            if (userError || !user) {
+                return { data: null, error: 'User not found' };
+            }
+            
+            // Calculate energy regeneration
+            const now = new Date();
+            const lastUpdate = new Date(user.last_energy_update);
+            const minutesPassed = Math.floor((now - lastUpdate) / (1000 * 60));
+            const energyToAdd = Math.floor(minutesPassed / 5); // 1 energy per 5 minutes
+            
+            // Calculate new energy
+            let newEnergy = (user.energy || this.initialEnergy) + energyToAdd + energyChange;
+            newEnergy = Math.max(0, Math.min(this.maxEnergy, newEnergy));
+            
+            // Update user energy
+            const { error: updateError } = await this.supabase
+                .from('users')
+                .update({
+                    energy: newEnergy,
+                    last_energy_update: now.toISOString()
+                })
+                .eq('id', user.id);
+            
+            if (updateError) throw updateError;
+            
+            return { 
+                data: { 
+                    energy: newEnergy, 
+                    energyAdded: energyToAdd,
+                    nextEnergyIn: 5 - (minutesPassed % 5)
+                }, 
+                error: null 
+            };
+            
+        } catch (error) {
+            console.error('Energy update error:', error);
+            return { data: null, error: 'Energy update failed' };
+        }
+    }
+
+    // Enerji kontrol
+    async getPlayerEnergy(username) {
+        return await this.updatePlayerEnergy(username, 0);
+    }
+
+    // Kullanıcı bulma
+    async findPlayer(username) {
+        try {
+            const { data: user, error } = await this.supabase
+                .from('users')
+                .select('*')
+                .eq('username', username)
+                .single();
+            
+            if (error && error.code !== 'PGRST116') { // PGRST116 = not found
+                throw error;
+            }
+            
+            if (user) {
+                const { password, ...userData } = user;
+                return { data: userData, error: null };
+            }
+            
+            return { data: null, error: null };
+            
+        } catch (error) {
+            console.error('Find player error:', error);
+            return { data: null, error: 'Database error' };
+        }
+    }
+
+    // Liderlik tablosu
+    async getLeaderboard(limit = 10) {
+        try {
+            const { data, error } = await this.supabase
+                .from('leaderboard')
+                .select('username, display_name, score, level, rank')
+                .limit(limit);
+            
+            if (error) throw error;
+            
+            return { data: data || [], error: null };
+            
+        } catch (error) {
+            console.error('Leaderboard error:', error);
+            return { data: [], error: 'Leaderboard fetch failed' };
+        }
+    }
+
+    // Kullanıcı adı kontrolü
+    async checkUsername(username) {
+        try {
+            const { data, error } = await this.supabase
+                .from('users')
+                .select('username')
+                .eq('username', username);
+            
+            if (error) throw error;
+            
+            return { data: data || [], error: null };
+            
+        } catch (error) {
+            console.error('Username check error:', error);
+            return { data: [], error: 'Username check failed' };
+        }
+    }
+
+    // Profil güncelleme
+    async updateProfile(username, profileData) {
+        try {
+            const updateData = { updated_at: new Date().toISOString() };
+            
+            if (profileData.displayName !== undefined) updateData.display_name = profileData.displayName;
+            if (profileData.bio !== undefined) updateData.bio = profileData.bio;
+            if (profileData.avatar !== undefined) updateData.avatar = profileData.avatar;
+            if (profileData.country !== undefined) updateData.country = profileData.country;
+            if (profileData.theme !== undefined) updateData.theme = profileData.theme;
+            
+            const { data: user, error } = await this.supabase
+                .from('users')
+                .update(updateData)
+                .eq('username', username)
+                .select()
+                .single();
+            
+            if (error) throw error;
+            
+            const { password, ...userData } = user;
+            return { data: userData, error: null };
+            
+        } catch (error) {
+            console.error('Profile update error:', error);
+            return { data: null, error: 'Profile update failed' };
+        }
+    }
+
+    // Kullanıcı istatistikleri
+    async getPlayerStats(username) {
+        try {
+            const { data: user, error } = await this.supabase
+                .from('users')
+                .select(`
+                    *,
+                    rank:leaderboard!inner(rank)
+                `)
+                .eq('username', username)
+                .single();
+            
+            if (error) throw error;
+            
+            const stats = {
+                totalGames: user.total_games || 0,
+                totalPlayTime: user.total_play_time || 0,
+                averageTime: user.total_games > 0 ? Math.round(user.total_play_time / user.total_games) : 0,
+                bestTime: user.best_time || null,
+                currentStreak: user.current_streak || 0,
+                maxStreak: user.max_streak || 0,
+                rank: user.rank?.[0]?.rank || 999,
+                joinDate: user.created_at,
+                lastPlayed: user.last_played
+            };
+            
+            return { data: stats, error: null };
+            
+        } catch (error) {
+            console.error('Get stats error:', error);
+            return { data: null, error: 'Failed to fetch stats' };
+        }
+    }
+
+    // Oyun istatistikleri güncelleme
+    async updateGameStats(username, gameTime, won = true) {
+        try {
+            // Get user ID first
+            const { data: user, error: userError } = await this.supabase
+                .from('users')
+                .select('id, total_games, total_play_time, current_streak, max_streak, best_time')
+                .eq('username', username)
+                .single();
+            
+            if (userError) throw userError;
+            
+            // Calculate new stats
+            const newTotalGames = (user.total_games || 0) + 1;
+            const newTotalPlayTime = (user.total_play_time || 0) + gameTime;
+            const newCurrentStreak = won ? (user.current_streak || 0) + 1 : 0;
+            const newMaxStreak = Math.max(user.max_streak || 0, newCurrentStreak);
+            const newBestTime = won && (!user.best_time || gameTime < user.best_time) ? gameTime : user.best_time;
+            
+            // Update user stats
+            const { data: updatedUser, error: updateError } = await this.supabase
+                .from('users')
+                .update({
+                    total_games: newTotalGames,
+                    total_play_time: newTotalPlayTime,
+                    current_streak: newCurrentStreak,
+                    max_streak: newMaxStreak,
+                    best_time: newBestTime,
+                    last_played: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', user.id)
+                .select()
+                .single();
+            
+            if (updateError) throw updateError;
+            
+            // Insert game session record
+            await this.supabase
+                .from('game_sessions')
+                .insert({
+                    user_id: user.id,
+                    score: 0, // Will be updated separately
+                    level_reached: 1, // Will be updated separately
+                    game_time: gameTime,
+                    won: won
+                });
+            
+            // Check for new achievements (simplified for now)
+            const newAchievements = await this.checkAchievements(user.id, updatedUser);
+            
+            const { password, ...userData } = updatedUser;
+            return { data: userData, error: null, newAchievements };
+            
+        } catch (error) {
+            console.error('Game stats update error:', error);
+            return { data: null, error: 'Stats update failed' };
+        }
+    }
+
+    // Basit başarım kontrolü
+    async checkAchievements(userId, userStats) {
+        try {
+            // Şimdilik basit achievement sistemi
+            // Gelecekte daha detaylı achievement tablosu kullanılabilir
+            return [];
+        } catch (error) {
+            console.error('Achievement check error:', error);
+            return [];
+        }
+    }
+
+    // Başarımları getir
+    async getPlayerAchievements(username) {
+        try {
+            // Şimdilik boş achievement sistemi
+            const achievements = {
+                unlocked: [],
+                locked: [],
+                totalPoints: 0,
+                unlockedCount: 0,
+                totalCount: 0
+            };
+            
+            return { data: achievements, error: null };
+        } catch (error) {
+            console.error('Get achievements error:', error);
+            return { data: null, error: 'Failed to fetch achievements' };
+        }
+    }
+
+    // --- CHAT SYSTEM ---
+    
+    // Chat mesajı kaydetme
+    async saveChatMessage(username, message) {
+        try {
+            // Get user ID
+            const { data: user } = await this.supabase
+                .from('users')
+                .select('id')
+                .eq('username', username)
+                .single();
+            
+            const chatMessage = {
+                user_id: user?.id || null,
+                username: username,
+                message: message.trim(),
+                message_type: username === 'System' ? 'system' : 'user'
+            };
+
+            const { data, error } = await this.supabase
+                .from('chat_messages')
+                .insert(chatMessage)
+                .select()
+                .single();
+            
+            if (error) throw error;
+            
+            return { data, error: null };
+
+        } catch (error) {
+            console.error('Save chat message error:', error);
+            return { data: null, error: 'Failed to save message' };
+        }
+    }
+
+    // Son chat mesajlarını getir
+    async getChatMessages(limit = 50) {
+        try {
+            const { data, error } = await this.supabase
+                .from('chat_messages')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(limit);
+            
+            if (error) throw error;
+            
+            // Reverse to show oldest first
+            return { data: (data || []).reverse(), error: null };
+
+        } catch (error) {
+            console.error('Get chat messages error:', error);
+            return { data: [], error: 'Failed to fetch messages' };
+        }
+    }
+
+    // Chat mesajlarını temizle (admin fonksiyonu)
+    async clearChatMessages() {
+        try {
+            const { error } = await this.supabase
+                .from('chat_messages')
+                .delete()
+                .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+            
+            if (error) throw error;
+            
+            return { data: true, error: null };
+        } catch (error) {
+            console.error('Clear chat messages error:', error);
+            return { data: false, error: 'Failed to clear messages' };
+        }
+    }
+}
+
+module.exports = SupabaseDB;

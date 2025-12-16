@@ -9,6 +9,10 @@ const rateLimit = require('express-rate-limit');
 
 // Load environment variables from .env file
 require('dotenv').config(); 
+
+// Database selection based on environment
+const useSupabase = process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY;
+const SupabaseDB = useSupabase ? require('./supabase-db') : null;
 const SimpleDB = require('./simple-db');
 
 // Environment variables with defaults
@@ -121,7 +125,7 @@ app.get('/health', async (req, res) => {
         res.status(200).json({
             status: 'healthy',
             timestamp: new Date().toISOString(),
-            database: 'json',
+            database: useSupabase ? 'supabase' : 'json',
             uptime: process.uptime()
         });
     } catch (error) {
@@ -136,16 +140,32 @@ app.get('/health', async (req, res) => {
 
 
 // --- DATABASE CONNECTION ---
-const db = new SimpleDB();
-console.log("✅ Connected to Simple JSON Database");
+let db;
 
-// --- AUTO MIGRATION ---
-// Automatically migrate database format and add level field to existing users
-const migrateChatFormat = require('./migrate-chat-format');
-const addLevelToUsers = require('./add-level-to-users');
-
-migrateChatFormat(); // Convert to new format first
-addLevelToUsers();   // Then add levels
+if (useSupabase) {
+    db = new SupabaseDB();
+    if (db) {
+        console.log("🚀 Using Supabase Database");
+    } else {
+        console.log("⚠️  Supabase failed, falling back to JSON Database");
+        db = new SimpleDB();
+        
+        // --- AUTO MIGRATION FOR JSON ---
+        const migrateChatFormat = require('./migrate-chat-format');
+        const addLevelToUsers = require('./add-level-to-users');
+        migrateChatFormat();
+        addLevelToUsers();
+    }
+} else {
+    db = new SimpleDB();
+    console.log("📄 Using JSON File Database");
+    
+    // --- AUTO MIGRATION FOR JSON ---
+    const migrateChatFormat = require('./migrate-chat-format');
+    const addLevelToUsers = require('./add-level-to-users');
+    migrateChatFormat();
+    addLevelToUsers();
+}
 
 // --- INPUT VALIDATION HELPERS ---
 const validator = {
