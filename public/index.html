@@ -2510,7 +2510,7 @@
     }
 
     socket.on('sync score', (s) => { if(s > points) points = s; updateUI(); });
-    socket.on('sync level', (l) => { if(l > level) level = l; updateUI(); });
+    socket.on('sync level', (l) => { level = l; updateUI(); }); // Always sync level from server
     socket.on('sync energy', (data) => { 
         energy = data.energy; 
         nextEnergyIn = data.nextEnergyIn || 5;
