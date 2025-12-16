@@ -139,6 +139,11 @@ app.get('/health', async (req, res) => {
 const db = new SimpleDB();
 console.log("✅ Connected to Simple JSON Database");
 
+// --- AUTO MIGRATION ---
+// Automatically add level field to existing users
+const addLevelToUsers = require('./add-level-to-users');
+addLevelToUsers();
+
 // --- INPUT VALIDATION HELPERS ---
 const validator = {
     isEmail: (email) => {
@@ -414,6 +419,7 @@ io.on('connection', (socket) => {
             // Mevcut kullanıcının skorunu ve level'ını gönder
             socket.emit('sync score', existingPlayer.score);
             socket.emit('sync level', existingPlayer.level || 1);
+            console.log(`🔄 Synced user ${username}: Score ${existingPlayer.score}, Level ${existingPlayer.level || 1}`);
             
             // Enerji durumunu güncelle ve gönder
             const energyResult = await db.getPlayerEnergy(username);
@@ -421,13 +427,15 @@ io.on('connection', (socket) => {
                 socket.emit('sync energy', energyResult.data);
             }
         } else {
-            // Yeni kullanıcı oluştur
-            await db.upsertPlayer(username, 0, '');
+            // Bu durumda kullanıcı JWT ile authenticated ama database'de yok
+            // Bu normal bir durum değil, ama güvenlik için handle edelim
+            console.warn(`Authenticated user ${username} not found in database`);
             socket.emit('sync energy', { 
                 energy: INITIAL_ENERGY, 
                 energyAdded: 0, 
                 nextEnergyIn: ENERGY_REGENERATION_MINUTES 
             });
+            socket.emit('sync level', 1); // Default level
         }
         
         updateLeaderboard();

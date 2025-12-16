@@ -2,22 +2,17 @@ const fs = require('fs');
 const path = require('path');
 
 function addLevelToExistingUsers() {
-    console.log('🔄 Adding level field to existing users...');
-    
     const playersPath = path.join(__dirname, 'players.json');
     
     // Check if players.json exists
     if (!fs.existsSync(playersPath)) {
-        console.log('📄 No players.json found, nothing to migrate');
-        return;
+        return; // No players file, nothing to migrate
     }
 
     try {
         // Read existing data
         const data = fs.readFileSync(playersPath, 'utf8');
         const players = JSON.parse(data);
-        
-        console.log(`📊 Found ${players.length} users`);
         
         let updatedCount = 0;
         
@@ -34,20 +29,11 @@ function addLevelToExistingUsers() {
         if (updatedCount > 0) {
             // Save updated data
             fs.writeFileSync(playersPath, JSON.stringify(players, null, 2));
-            console.log(`✅ Updated ${updatedCount} users with level field`);
-            
-            // Show some examples
-            players.slice(0, 5).forEach(player => {
-                console.log(`  ${player.username}: Score ${player.score} → Level ${player.level}`);
-            });
-        } else {
-            console.log('✅ All users already have level field');
+            console.log(`🔄 Auto-migration: Added level field to ${updatedCount} existing users`);
         }
         
-        console.log('🎉 Migration completed successfully!');
-        
     } catch (error) {
-        console.error('❌ Migration failed:', error.message);
+        console.error('❌ Auto-migration failed:', error.message);
     }
 }
 
