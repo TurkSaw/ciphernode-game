@@ -19,16 +19,25 @@ const server = http.createServer(app);
 
 // Database selection based on environment
 const useSupabase = process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY;
-let SupabaseDB = null;
-let SimpleDB = null;
 
 // Dynamic imports for database modules
-if (useSupabase) {
-    const { default: SupabaseDBClass } = await import('./supabase-db.js');
-    SupabaseDB = SupabaseDBClass;
+async function loadDatabaseModules() {
+    let SupabaseDB = null;
+    let SimpleDB = null;
+
+    if (useSupabase) {
+        const { default: SupabaseDBClass } = await import('./supabase-db.js');
+        SupabaseDB = SupabaseDBClass;
+    }
+    const { default: SimpleDBClass } = await import('./simple-db.js');
+    SimpleDB = SimpleDBClass;
+
+    return { SupabaseDB, SimpleDB };
 }
-const { default: SimpleDBClass } = await import('./simple-db.js');
-SimpleDB = SimpleDBClass;
+
+// Initialize database modules
+let SupabaseDB = null;
+let SimpleDB = null;
 
 // Environment variables with defaults
 const PORT = process.env.PORT || 3000;
@@ -196,7 +205,12 @@ let dbConnectionHealthy = false;
 
 async function initializeDatabase() {
     try {
-        if (useSupabase) {
+        // Load database modules first
+        const modules = await loadDatabaseModules();
+        SupabaseDB = modules.SupabaseDB;
+        SimpleDB = modules.SimpleDB;
+
+        if (useSupabase && SupabaseDB) {
             console.log("🔄 Attempting Supabase connection...");
             db = new SupabaseDB();
             
@@ -220,10 +234,14 @@ async function initializeDatabase() {
         console.log("📄 Using JSON File Database");
         
         // --- AUTO MIGRATION FOR JSON ---
-        const { default: migrateChatFormat } = await import('./migrate-chat-format.js');
-        const { default: addLevelToUsers } = await import('./add-level-to-users.js');
-        migrateChatFormat();
-        addLevelToUsers();
+        try {
+            const { default: migrateChatFormat } = await import('./migrate-chat-format.js');
+            const { default: addLevelToUsers } = await import('./add-level-to-users.js');
+            migrateChatFormat();
+            addLevelToUsers();
+        } catch (migrationError) {
+            console.warn('Migration warning:', migrationError.message);
+        }
         
     } catch (error) {
         console.error("💥 Critical database initialization error:", error.message);
@@ -793,6 +811,38 @@ io.on('connection', (socket) => {
         
         console.log(`Manual leaderboard refresh requested by ${socket.currentUser}`);
         await updateLeaderboard(true); // Force update
+    });
+
+    // 6.1. Manual User Data Sync
+    socket.on('request user sync', async (payload) => {
+        const { token } = payload;
+        
+        if (!token) return;
+
+        // JWT token doğrulama
+        const { data: decoded, error } = db.verifyToken(token);
+        if (error || !decoded) return;
+
+        try {
+            // Fresh user data from database
+            const { data: existingPlayer, error: playerError } = await db.findPlayer(decoded.username);
+            
+            if (!playerError && existingPlayer) {
+                // Send fresh data to client
+                socket.emit('sync score', existingPlayer.score || 0);
+                socket.emit('sync level', existingPlayer.level || 1);
+                
+                console.log(`🔄 Manual sync for ${decoded.username}: Score ${existingPlayer.score || 0}, Level ${existingPlayer.level || 1}`);
+                
+                // Also refresh energy
+                const energyResult = await db.getPlayerEnergy(decoded.username);
+                if (!energyResult.error && energyResult.data) {
+                    socket.emit('sync energy', energyResult.data);
+                }
+            }
+        } catch (error) {
+            console.error(`Error in manual user sync for ${decoded.username}:`, error.message);
+        }
     });
 
     // 7. Disconnect - Memory leak prevention

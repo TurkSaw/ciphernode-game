@@ -2599,6 +2599,19 @@
         document.getElementById('auth-overlay').style.display = 'none';
         document.getElementById('app-container').style.display = 'flex';
         
+        // Load cached game data while waiting for server sync
+        const cachedScore = localStorage.getItem('gameScore');
+        const cachedLevel = localStorage.getItem('gameLevel');
+        
+        if (cachedScore) {
+            points = parseInt(cachedScore) || 0;
+        }
+        if (cachedLevel) {
+            level = parseInt(cachedLevel) || 1;
+        }
+        
+        updateUI(); // Update UI with cached data immediately
+        
         socket.emit('join game', { token: token });
     }
 
@@ -2648,6 +2661,9 @@
                 points = s; 
                 updateUI(); 
                 console.log(`Score synced: ${s}`);
+                
+                // Save to localStorage for persistence
+                localStorage.setItem('gameScore', s.toString());
             }
         } catch (error) {
             console.error('Error syncing score:', error);
@@ -2659,6 +2675,10 @@
             if(typeof l === 'number' && l >= 1) {
                 level = l; 
                 updateUI(); 
+                console.log(`Level synced: ${l}`);
+                
+                // Save to localStorage for persistence
+                localStorage.setItem('gameLevel', l.toString());
             }
         } catch (error) {
             console.error('Error syncing level:', error);
@@ -2990,7 +3010,13 @@
     function refreshLeaderboard() {
         console.log('Manual leaderboard refresh requested');
         socket.emit('request leaderboard update');
-        showNotification('Leaderboard refresh requested', 'info');
+        showNotification('Leaderboard refreshing...', 'info');
+        
+        // Also request fresh user data
+        const token = localStorage.getItem('authToken');
+        if (token) {
+            socket.emit('request user sync', { token: token });
+        }
     }
 
     // Sidebar Functions
