@@ -1,7 +1,12 @@
-const fs = require('fs');
-const path = require('path');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+
+// ES modules __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 class SimpleDB {
     constructor() {
@@ -677,4 +682,4 @@ class SimpleDB {
     }
 }
 
-module.exports = SimpleDB;
+export default SimpleDB;

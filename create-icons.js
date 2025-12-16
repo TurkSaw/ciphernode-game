@@ -1,8 +1,13 @@
 // Simple icon creator for CipherNode PWA
 // This creates basic PNG icons using Canvas (if available in Node.js environment)
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ES modules __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Icon sizes needed for PWA
 const sizes = [72, 96, 128, 144, 152, 192, 384, 512];

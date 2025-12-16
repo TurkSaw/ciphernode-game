@@ -1,5 +1,10 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ES modules __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 function addLevelToExistingUsers() {
     const playersPath = path.join(__dirname, 'players.json');
@@ -12,7 +17,18 @@ function addLevelToExistingUsers() {
     try {
         // Read existing data
         const data = fs.readFileSync(playersPath, 'utf8');
-        const players = JSON.parse(data);
+        const parsedData = JSON.parse(data);
+        
+        // Handle both old format (array) and new format (object)
+        let players;
+        if (Array.isArray(parsedData)) {
+            players = parsedData;
+        } else if (parsedData.players && Array.isArray(parsedData.players)) {
+            players = parsedData.players;
+        } else {
+            console.log('🔄 Auto-migration: No players array found');
+            return;
+        }
         
         let updatedCount = 0;
         
@@ -27,8 +43,19 @@ function addLevelToExistingUsers() {
         });
         
         if (updatedCount > 0) {
-            // Save updated data
-            fs.writeFileSync(playersPath, JSON.stringify(players, null, 2));
+            // Save updated data in correct format
+            if (Array.isArray(parsedData)) {
+                // Old format - convert to new format
+                const newFormat = {
+                    players: players,
+                    chatMessages: [],
+                    lastUpdated: new Date().toISOString()
+                };
+                fs.writeFileSync(playersPath, JSON.stringify(newFormat, null, 2));
+            } else {
+                // New format - just update
+                fs.writeFileSync(playersPath, JSON.stringify(parsedData, null, 2));
+            }
             console.log(`🔄 Auto-migration: Added level field to ${updatedCount} existing users`);
         }
         
@@ -38,8 +65,8 @@ function addLevelToExistingUsers() {
 }
 
 // Run if called directly
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
     addLevelToExistingUsers();
 }
 
-module.exports = addLevelToExistingUsers;
+export default addLevelToExistingUsers;

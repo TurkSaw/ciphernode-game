@@ -1,19 +1,34 @@
-const express = require('express');
-const app = express();
-const http = require('http');
-const server = http.createServer(app);
-const { Server } = require("socket.io");
-const path = require('path');
-const bodyParser = require('body-parser');
-const rateLimit = require('express-rate-limit');
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import bodyParser from 'body-parser';
+import rateLimit from 'express-rate-limit';
+import dotenv from 'dotenv';
+
+// ES modules __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Load environment variables from .env file
-require('dotenv').config(); 
+dotenv.config();
+
+const app = express();
+const server = http.createServer(app); 
 
 // Database selection based on environment
 const useSupabase = process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY;
-const SupabaseDB = useSupabase ? require('./supabase-db') : null;
-const SimpleDB = require('./simple-db');
+let SupabaseDB = null;
+let SimpleDB = null;
+
+// Dynamic imports for database modules
+if (useSupabase) {
+    const { default: SupabaseDBClass } = await import('./supabase-db.js');
+    SupabaseDB = SupabaseDBClass;
+}
+const { default: SimpleDBClass } = await import('./simple-db.js');
+SimpleDB = SimpleDBClass;
 
 // Environment variables with defaults
 const PORT = process.env.PORT || 3000;
@@ -205,8 +220,8 @@ async function initializeDatabase() {
         console.log("📄 Using JSON File Database");
         
         // --- AUTO MIGRATION FOR JSON ---
-        const migrateChatFormat = require('./migrate-chat-format');
-        const addLevelToUsers = require('./add-level-to-users');
+        const { default: migrateChatFormat } = await import('./migrate-chat-format.js');
+        const { default: addLevelToUsers } = await import('./add-level-to-users.js');
         migrateChatFormat();
         addLevelToUsers();
         
@@ -720,7 +735,8 @@ io.on('connection', (socket) => {
                 socket.emit('new achievements', gameResult.newAchievements);
             }
             
-            updateLeaderboard();
+            // Leaderboard'ı hemen güncelle (force update)
+            await updateLeaderboard(true);
         } catch (err) {
             console.error("Error saving score:", err.message);
         }
@@ -771,7 +787,15 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 6. Disconnect - Memory leak prevention
+    // 6. Manual Leaderboard Refresh (Debug)
+    socket.on('request leaderboard update', async () => {
+        if(!socket.currentUser || !socket.isAuthenticated) return;
+        
+        console.log(`Manual leaderboard refresh requested by ${socket.currentUser}`);
+        await updateLeaderboard(true); // Force update
+    });
+
+    // 7. Disconnect - Memory leak prevention
     socket.on('disconnect', () => { 
         if(socket.currentUser) {
             console.log(`${socket.currentUser} disconnected`);

@@ -1,6 +1,11 @@
-const bcrypt = require('bcryptjs');
-const fs = require('fs');
-const path = require('path');
+import bcrypt from 'bcryptjs';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ES modules __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 async function migrateUsers() {
     const dbPath = path.join(__dirname, 'players.json');

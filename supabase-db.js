@@ -1,6 +1,6 @@
-const { createClient } = require('@supabase/supabase-js');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+import { createClient } from '@supabase/supabase-js';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 class SupabaseDB {
     constructor() {
@@ -361,7 +361,7 @@ class SupabaseDB {
                 bestTime: user.best_time || null,
                 currentStreak: user.current_streak || 0,
                 maxStreak: user.max_streak || 0,
-                rank: user.rank?.[0]?.rank || 999,
+                rank: (user.rank && user.rank[0] && user.rank[0].rank) || 999,
                 joinDate: user.created_at,
                 lastPlayed: user.last_played
             };
@@ -484,9 +484,10 @@ class SupabaseDB {
                 const isUnlocked = unlockedIds.includes(achievement.id);
                 
                 if (isUnlocked) {
+                    const userAchievement = userAchievements.find(ua => ua.achievement_id === achievement.id);
                     unlocked.push({
                         ...achievement,
-                        unlockedAt: userAchievements.find(ua => ua.achievement_id === achievement.id)?.unlocked_at
+                        unlockedAt: userAchievement ? userAchievement.unlocked_at : null
                     });
                     totalPoints += achievement.points || 0;
                 } else {
@@ -568,7 +569,7 @@ class SupabaseDB {
                 .single();
             
             const chatMessage = {
-                user_id: user?.id || null,
+                user_id: user ? user.id : null,
                 username: username,
                 message: message.trim(),
                 message_type: username === 'System' ? 'system' : 'user'
@@ -628,4 +629,4 @@ class SupabaseDB {
     }
 }
 
-module.exports = SupabaseDB;
+export default SupabaseDB;

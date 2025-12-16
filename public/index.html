@@ -1907,6 +1907,7 @@
                 <div class="stats">LVL: <span id="level-display">1</span> | PTS: <span id="score-display">0</span></div>
                 <button onclick="openProfile()" class="header-sidebar-btn">👤</button>
                 <button onclick="toggleSidebar()" class="header-sidebar-btn">💬</button>
+                <button onclick="refreshLeaderboard()" class="header-sidebar-btn" title="Refresh Leaderboard">🔄</button>
                 <button onclick="handleLogout()" class="logout-btn">LOGOUT</button>
             </div>
         </header>
@@ -2643,9 +2644,10 @@
 
     socket.on('sync score', (s) => { 
         try {
-            if(typeof s === 'number' && s >= 0 && s > points) {
+            if(typeof s === 'number' && s >= 0) {
                 points = s; 
                 updateUI(); 
+                console.log(`Score synced: ${s}`);
             }
         } catch (error) {
             console.error('Error syncing score:', error);
@@ -2940,6 +2942,9 @@
                 won: true
             });
             
+            // UI'ı hemen güncelle
+            updateUI();
+            
             document.getElementById('modal-msg').innerHTML = `Time: ${secondsElapsed}s<br>Reward: +${p} Tokens`;
             modal.style.display = 'flex';
             
@@ -2979,6 +2984,13 @@
         `;
         gridEl.style.gridTemplateColumns = 'unset';
         gridEl.style.placeItems = 'center';
+    }
+
+    // Manual leaderboard refresh (debug function)
+    function refreshLeaderboard() {
+        console.log('Manual leaderboard refresh requested');
+        socket.emit('request leaderboard update');
+        showNotification('Leaderboard refresh requested', 'info');
     }
 
     // Sidebar Functions
@@ -3043,8 +3055,21 @@
         }
     }
     socket.on('update leaderboard', (data) => {
-        let l=document.getElementById('leaderboard-list'); l.innerHTML='';
-        data.forEach((p,i)=> l.innerHTML+=`<div class="lb-item"><span style="color:var(--energy)">#${i+1}</span> <span>${p.username}</span> <span style="color:var(--primary)">${p.score}</span></div>`);
+        try {
+            let l=document.getElementById('leaderboard-list'); 
+            l.innerHTML='';
+            
+            if (data && Array.isArray(data)) {
+                data.forEach((p,i)=> {
+                    if (p && p.username && typeof p.score === 'number') {
+                        l.innerHTML+=`<div class="lb-item"><span style="color:var(--energy)">#${i+1}</span> <span>${p.username}</span> <span style="color:var(--primary)">${p.score}</span></div>`;
+                    }
+                });
+                console.log(`Leaderboard updated with ${data.length} players`);
+            }
+        } catch (error) {
+            console.error('Error updating leaderboard:', error);
+        }
     });
 
     // Mobile optimizations

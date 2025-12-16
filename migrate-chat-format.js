@@ -1,5 +1,10 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ES modules __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 function migrateChatFormat() {
     const playersPath = path.join(__dirname, 'players.json');
@@ -44,8 +49,8 @@ function migrateChatFormat() {
 }
 
 // Run if called directly
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
     migrateChatFormat();
 }
 
-module.exports = migrateChatFormat;
+export default migrateChatFormat;
