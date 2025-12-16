@@ -2359,22 +2359,51 @@
 
     // --- 1. REGISTER LOGIC ---
     async function handleRegister() {
-        const user = document.getElementById('reg-user').value;
-        const email = document.getElementById('reg-email').value;
+        const user = document.getElementById('reg-user').value.trim();
+        const email = document.getElementById('reg-email').value.trim();
         const pass = document.getElementById('reg-pass').value;
         const err = document.getElementById('reg-error');
+        const registerBtn = document.querySelector('#register-screen .auth-btn');
 
+        // Clear previous errors
+        err.style.display = 'none';
+
+        // Client-side validation
         if(!user || !email || !pass) {
-            err.innerText = "All fields required"; err.style.display = 'block'; return;
+            err.innerText = "All fields are required"; 
+            err.style.display = 'block'; 
+            return;
         }
 
-        if(user.length < 3) {
-            err.innerText = "Username must be at least 3 characters"; err.style.display = 'block'; return;
+        if(user.length < 3 || user.length > 30) {
+            err.innerText = "Username must be 3-30 characters"; 
+            err.style.display = 'block'; 
+            return;
         }
 
-        if(pass.length < 6) {
-            err.innerText = "Password must be at least 6 characters"; err.style.display = 'block'; return;
+        if(!/^[a-zA-Z0-9_-]+$/.test(user)) {
+            err.innerText = "Username can only contain letters, numbers, underscore, and dash"; 
+            err.style.display = 'block'; 
+            return;
         }
+
+        if(pass.length < 6 || pass.length > 128) {
+            err.innerText = "Password must be 6-128 characters"; 
+            err.style.display = 'block'; 
+            return;
+        }
+
+        // Email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if(!emailRegex.test(email)) {
+            err.innerText = "Please enter a valid email address"; 
+            err.style.display = 'block'; 
+            return;
+        }
+
+        // Disable button and show loading
+        registerBtn.disabled = true;
+        registerBtn.innerText = 'Creating Account...';
 
         try {
             const response = await fetch('/api/register', {
@@ -2392,7 +2421,7 @@
             const data = await response.json();
 
             if (!response.ok) {
-                err.innerText = data.error; 
+                err.innerText = data.error || 'Registration failed'; 
                 err.style.display = 'block'; 
                 return;
             }
@@ -2403,13 +2432,23 @@
             
             // Başarı mesajı göster
             const loginErr = document.getElementById('login-error');
-            loginErr.style.color = 'var(--primary)';
+            loginErr.style.color = 'var(--success)';
             loginErr.innerText = 'Registration successful! Please login.';
             loginErr.style.display = 'block';
 
+            // Clear registration form
+            document.getElementById('reg-user').value = '';
+            document.getElementById('reg-email').value = '';
+            document.getElementById('reg-pass').value = '';
+
         } catch (error) {
-            err.innerText = "Network error. Please try again."; 
+            console.error('Registration error:', error);
+            err.innerText = "Network error. Please check your connection and try again."; 
             err.style.display = 'block';
+        } finally {
+            // Re-enable button
+            registerBtn.disabled = false;
+            registerBtn.innerText = 'Create Account';
         }
     }
 
@@ -2417,16 +2456,33 @@
 
     // --- 3. LOGIN LOGIC ---
     async function handleLogin() {
-        const email = document.getElementById('login-email').value;
+        const email = document.getElementById('login-email').value.trim();
         const pass = document.getElementById('login-pass').value;
         const err = document.getElementById('login-error');
+        const loginBtn = document.querySelector('#login-screen .auth-btn');
 
-        // Reset error color
+        // Reset error color and hide previous errors
         err.style.color = 'var(--danger)';
+        err.style.display = 'none';
 
+        // Client-side validation
         if(!email || !pass) {
-            err.innerText = "Email and password required"; err.style.display = 'block'; return;
+            err.innerText = "Email and password are required"; 
+            err.style.display = 'block'; 
+            return;
         }
+
+        // Email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if(!emailRegex.test(email)) {
+            err.innerText = "Please enter a valid email address"; 
+            err.style.display = 'block'; 
+            return;
+        }
+
+        // Disable button and show loading
+        loginBtn.disabled = true;
+        loginBtn.innerText = 'Connecting...';
 
         try {
             const response = await fetch('/api/login', {
@@ -2443,7 +2499,7 @@
             const data = await response.json();
 
             if (!response.ok) {
-                err.innerText = data.error; 
+                err.innerText = data.error || 'Login failed'; 
                 err.style.display = 'block'; 
                 return;
             }
@@ -2452,12 +2508,20 @@
             localStorage.setItem('authToken', data.token);
             localStorage.setItem('userData', JSON.stringify(data.user));
 
+            // Clear login form for security
+            document.getElementById('login-pass').value = '';
+
             // Oyuna gir
             enterGame(data.user.username, data.token);
 
         } catch (error) {
-            err.innerText = "Network error. Please try again."; 
+            console.error('Login error:', error);
+            err.innerText = "Network error. Please check your connection and try again."; 
             err.style.display = 'block';
+        } finally {
+            // Re-enable button
+            loginBtn.disabled = false;
+            loginBtn.innerText = 'Connect';
         }
     }
 
@@ -2509,69 +2573,219 @@
         }
     }
 
-    socket.on('sync score', (s) => { if(s > points) points = s; updateUI(); });
-    socket.on('sync level', (l) => { level = l; updateUI(); }); // Always sync level from server
-    socket.on('sync energy', (data) => { 
-        energy = data.energy; 
-        nextEnergyIn = data.nextEnergyIn || 5;
-        updateUI(); 
-        
-        // Enerji timer'ını başlat
-        if (energyTimer) clearInterval(energyTimer);
-        if (energy < 100) {
-            energyTimer = setInterval(updateEnergyTimer, 1000);
+    socket.on('sync score', (s) => { 
+        try {
+            if(typeof s === 'number' && s >= 0 && s > points) {
+                points = s; 
+                updateUI(); 
+            }
+        } catch (error) {
+            console.error('Error syncing score:', error);
         }
     });
-    socket.on('energy error', (msg) => { alert(msg); });
+    
+    socket.on('sync level', (l) => { 
+        try {
+            if(typeof l === 'number' && l >= 1) {
+                level = l; 
+                updateUI(); 
+            }
+        } catch (error) {
+            console.error('Error syncing level:', error);
+        }
+    });
+    
+    socket.on('sync energy', (data) => { 
+        try {
+            if(data && typeof data.energy === 'number') {
+                energy = Math.max(0, Math.min(100, data.energy)); 
+                nextEnergyIn = data.nextEnergyIn || 5;
+                updateUI(); 
+                
+                // Enerji timer'ını başlat
+                if (energyTimer) {
+                    clearInterval(energyTimer);
+                    energyTimer = null;
+                }
+                if (energy < 100) {
+                    energyTimer = setInterval(updateEnergyTimer, 1000);
+                }
+            }
+        } catch (error) {
+            console.error('Error syncing energy:', error);
+        }
+    });
+    
+    socket.on('energy error', (msg) => { 
+        showNotification(msg || 'Energy error occurred', 'error');
+    });
+    
     socket.on('auth_error', (msg) => { 
-        alert('Authentication failed: ' + msg);
+        console.error('Authentication error:', msg);
+        showNotification('Authentication failed. Please login again.', 'error');
+        
         // Token'ı temizle ve login'e yönlendir
         localStorage.removeItem('authToken');
         localStorage.removeItem('userData');
-        location.reload(); 
+        
+        setTimeout(() => {
+            location.reload(); 
+        }, 2000);
+    });
+    
+    // Socket connection error handling
+    socket.on('connect_error', (error) => {
+        console.error('Socket connection error:', error);
+        showNotification('Connection error. Retrying...', 'error');
+    });
+    
+    socket.on('disconnect', (reason) => {
+        console.warn('Socket disconnected:', reason);
+        if (reason === 'io server disconnect') {
+            // Server disconnected, try to reconnect
+            showNotification('Server disconnected. Reconnecting...', 'error');
+            socket.connect();
+        }
+    });
+    
+    socket.on('reconnect', (attemptNumber) => {
+        console.log('Socket reconnected after', attemptNumber, 'attempts');
+        showNotification('Connection restored!', 'success');
     });
 
     function startGame() {
-        if(energy < 10) return alert("Insufficient Energy! Wait for regeneration.");
+        if(energy < 10) {
+            showNotification("Insufficient Energy! Wait for regeneration.", 'error');
+            return;
+        }
         
-        // Sunucuya enerji kullanımını bildir
-        socket.emit('use energy', 10);
+        if(isPlaying) {
+            console.warn('Game already in progress');
+            return;
+        }
         
-        isPlaying=true; secondsElapsed=0; document.getElementById('timer').innerText="0";
-        document.getElementById('start-btn').style.display='none';
-        generateLevel();
-        timerInterval=setInterval(()=>{ secondsElapsed++; document.getElementById('timer').innerText=secondsElapsed;},1000);
+        try {
+            // Sunucuya enerji kullanımını bildir
+            socket.emit('use energy', 10);
+            
+            isPlaying = true; 
+            secondsElapsed = 0; 
+            document.getElementById('timer').innerText = "0";
+            document.getElementById('start-btn').style.display = 'none';
+            
+            generateLevel();
+            
+            // Clear any existing timer
+            if(timerInterval) {
+                clearInterval(timerInterval);
+            }
+            
+            timerInterval = setInterval(() => { 
+                secondsElapsed++; 
+                document.getElementById('timer').innerText = secondsElapsed;
+            }, 1000);
+            
+        } catch (error) {
+            console.error('Error starting game:', error);
+            showNotification('Failed to start game. Please try again.', 'error');
+            isPlaying = false;
+            document.getElementById('start-btn').style.display = 'block';
+        }
     }
-    function generateLevel() {
-        gridEl.innerHTML=''; // Clear placeholder and previous grid
+    // Cache for responsive calculations
+    let cachedCellSize = null;
+    let lastWindowWidth = 0;
+    
+    function getCellSize() {
+        const currentWidth = window.innerWidth;
         
-        if(level>5) gridSize=4; if(level>10) gridSize=5;
+        // Use cached value if window width hasn't changed significantly
+        if (cachedCellSize && Math.abs(currentWidth - lastWindowWidth) < 50) {
+            return cachedCellSize;
+        }
         
-        // Responsive grid cell size
         let cellSize = '80px';
-        if (window.innerWidth >= 1440) {
+        if (currentWidth >= 1440) {
             cellSize = '100px';
-        } else if (window.innerWidth >= 1024) {
+        } else if (currentWidth >= 1024) {
             cellSize = '90px';
-        } else if (window.innerWidth <= 768) {
+        } else if (currentWidth <= 768) {
             cellSize = '50px';
-        } else if (window.innerWidth <= 480) {
+        } else if (currentWidth <= 480) {
             cellSize = '42px';
-        } else if (window.innerWidth <= 360) {
+        } else if (currentWidth <= 360) {
             cellSize = '36px';
         }
         
-        gridEl.style.gridTemplateColumns=`repeat(${gridSize}, ${cellSize})`;
-        gridEl.style.placeItems = 'unset'; // Remove center alignment
-        gridState=[];
-        for(let r=0;r<gridSize;r++){
-            let row=[]; for(let c=0;c<gridSize;c++){
-                let cell=document.createElement('div'); cell.className='cell'; cell.dataset.r=r; cell.dataset.c=c;
-                cell.onclick=()=>handleMove(r,c); gridEl.appendChild(cell); row.push(false);
-            } gridState.push(row);
-        }
-        for(let i=0;i<level+3;i++) toggleCell(Math.floor(Math.random()*gridSize), Math.floor(Math.random()*gridSize));
+        cachedCellSize = cellSize;
+        lastWindowWidth = currentWidth;
+        return cellSize;
     }
+    
+    function generateLevel() {
+        try {
+            gridEl.innerHTML = ''; // Clear placeholder and previous grid
+            
+            // Determine grid size based on level
+            if (level > 10) {
+                gridSize = 5;
+            } else if (level > 5) {
+                gridSize = 4;
+            } else {
+                gridSize = 3;
+            }
+            
+            const cellSize = getCellSize();
+            gridEl.style.gridTemplateColumns = `repeat(${gridSize}, ${cellSize})`;
+            gridEl.style.placeItems = 'unset'; // Remove center alignment
+            
+            // Initialize grid state
+            gridState = [];
+            const fragment = document.createDocumentFragment(); // Use fragment for better performance
+            
+            for (let r = 0; r < gridSize; r++) {
+                let row = [];
+                for (let c = 0; c < gridSize; c++) {
+                    let cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+                    cell.onclick = () => handleMove(r, c);
+                    fragment.appendChild(cell);
+                    row.push(false);
+                }
+                gridState.push(row);
+            }
+            
+            gridEl.appendChild(fragment); // Single DOM update
+            
+            // Generate puzzle by making random moves
+            const moves = Math.min(level + 3, 15); // Cap at 15 moves for performance
+            for (let i = 0; i < moves; i++) {
+                toggleCell(
+                    Math.floor(Math.random() * gridSize), 
+                    Math.floor(Math.random() * gridSize)
+                );
+            }
+            
+        } catch (error) {
+            console.error('Error generating level:', error);
+            showNotification('Failed to generate level. Please try again.', 'error');
+        }
+    }
+    
+    // Optimize window resize handling
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            cachedCellSize = null; // Clear cache on resize
+            if (isPlaying && gridEl.children.length > 0) {
+                const cellSize = getCellSize();
+                gridEl.style.gridTemplateColumns = `repeat(${gridSize}, ${cellSize})`;
+            }
+        }, 250); // Debounce resize events
+    });
     function handleMove(r,c) { if(isPlaying){ toggleCell(r,c); if(gridState.every(row=>row.every(v=>v))) endGame(); } }
     function toggleCell(r,c) {
         [[0,0],[0,1],[0,-1],[1,0],[-1,0]].forEach(([dr,dc])=>{
@@ -2583,25 +2797,55 @@
         });
     }
     function endGame() {
-        clearInterval(timerInterval); isPlaying=false;
-        let p = Math.max(0, 100 - (Math.floor(secondsElapsed/60)*10));
-        points+=p; level++; updateUI();
-        
-        // Oyun istatistiklerini gönder
-        socket.emit('submit score', {
-            score: points,
-            level: level,
-            gameTime: secondsElapsed,
-            won: true
-        });
-        
-        document.getElementById('modal-msg').innerHTML=`Time: ${secondsElapsed}s<br>Reward: +${p} Tokens`;
-        modal.style.display='flex';
+        try {
+            if(timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+            
+            isPlaying = false;
+            
+            let p = Math.max(0, 100 - (Math.floor(secondsElapsed/60)*10));
+            points += p; 
+            level++; 
+            updateUI();
+            
+            // Oyun istatistiklerini gönder
+            socket.emit('submit score', {
+                score: points,
+                level: level,
+                gameTime: secondsElapsed,
+                won: true
+            });
+            
+            document.getElementById('modal-msg').innerHTML = `Time: ${secondsElapsed}s<br>Reward: +${p} Tokens`;
+            modal.style.display = 'flex';
+            
+            // Achievement notification için kontrol
+            if(secondsElapsed < 30) {
+                showNotification('Speed Demon! Completed in under 30 seconds!', 'success');
+            }
+            
+        } catch (error) {
+            console.error('Error ending game:', error);
+            showNotification('Game completed but there was an error saving progress.', 'error');
+        }
     }
     function closeModal() { 
-        modal.style.display='none'; 
-        document.getElementById('start-btn').style.display='block'; 
-        resetGrid();
+        try {
+            modal.style.display = 'none'; 
+            document.getElementById('start-btn').style.display = 'block'; 
+            resetGrid();
+            
+            // Ensure game state is properly reset
+            isPlaying = false;
+            if(timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        } catch (error) {
+            console.error('Error closing modal:', error);
+        }
     }
 
     function resetGrid() {
@@ -2650,7 +2894,32 @@
         d.innerHTML=`<span class="user">${msg.user}:</span> ${msg.text}`;
         let b=document.getElementById('chat-messages'); b.appendChild(d); b.scrollTop=b.scrollHeight;
     });
-    function sendChat() { let i=document.getElementById('chat-input'); if(i.value){ socket.emit('chat message', i.value); i.value=''; } }
+    function sendChat() { 
+        try {
+            const input = document.getElementById('chat-input'); 
+            const message = input.value.trim();
+            
+            if(!message) return;
+            
+            if(message.length > 500) {
+                showNotification('Message too long. Maximum 500 characters.', 'error');
+                return;
+            }
+            
+            // Check if socket is connected
+            if(!socket.connected) {
+                showNotification('Not connected to server. Please wait...', 'error');
+                return;
+            }
+            
+            socket.emit('chat message', message); 
+            input.value = '';
+            
+        } catch (error) {
+            console.error('Error sending chat message:', error);
+            showNotification('Failed to send message. Please try again.', 'error');
+        }
+    }
     socket.on('update leaderboard', (data) => {
         let l=document.getElementById('leaderboard-list'); l.innerHTML='';
         data.forEach((p,i)=> l.innerHTML+=`<div class="lb-item"><span style="color:var(--energy)">#${i+1}</span> <span>${p.username}</span> <span style="color:var(--primary)">${p.score}</span></div>`);

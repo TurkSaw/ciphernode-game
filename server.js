@@ -120,19 +120,29 @@ app.get('/browserconfig.xml', (req, res) => {
 app.get('/health', async (req, res) => {
     try {
         // Test database connection
-        const { data, error } = await db.findPlayer('health-check-user');
+        const { error } = await db.findPlayer('health-check-user');
+        
+        if (error) {
+            throw new Error(`Database connection failed: ${error}`);
+        }
         
         res.status(200).json({
             status: 'healthy',
             timestamp: new Date().toISOString(),
             database: useSupabase ? 'supabase' : 'json',
-            uptime: process.uptime()
+            uptime: Math.floor(process.uptime()),
+            memory: {
+                used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+                total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024)
+            }
         });
     } catch (error) {
+        console.error('Health check failed:', error.message);
         res.status(503).json({
             status: 'unhealthy',
-            error: error.message,
-            timestamp: new Date().toISOString()
+            error: 'Service temporarily unavailable',
+            timestamp: new Date().toISOString(),
+            uptime: Math.floor(process.uptime())
         });
     }
 });
@@ -185,7 +195,27 @@ const validator = {
     
     sanitizeString: (str, maxLength = 255) => {
         if (typeof str !== 'string') return '';
-        return str.trim().slice(0, maxLength).replace(/[<>]/g, '');
+        return str.trim()
+            .slice(0, maxLength)
+            .replace(/[<>]/g, '') // Remove HTML tags
+            .replace(/javascript:/gi, '') // Remove javascript: protocol
+            .replace(/on\w+=/gi, '') // Remove event handlers
+            .replace(/data:/gi, ''); // Remove data: protocol
+    },
+    
+    // Enhanced validation for usernames
+    isValidUsername: (username) => {
+        if (typeof username !== 'string') return false;
+        if (username.length < 3 || username.length > 30) return false;
+        
+        // Check for valid characters
+        if (!/^[a-zA-Z0-9_-]+$/.test(username)) return false;
+        
+        // Prevent reserved words
+        const reserved = ['admin', 'system', 'root', 'null', 'undefined', 'anonymous'];
+        if (reserved.includes(username.toLowerCase())) return false;
+        
+        return true;
     },
     
     isValidScore: (score) => {
@@ -230,9 +260,9 @@ app.post('/api/register', async (req, res) => {
         const cleanEmail = validator.sanitizeString(email, 254).toLowerCase();
         
         // Validate username
-        if (!validator.isUsername(cleanUsername)) {
+        if (!validator.isValidUsername(cleanUsername)) {
             return res.status(400).json({ 
-                error: 'Username must be 3-30 characters and contain only letters, numbers, underscore, and dash' 
+                error: 'Username must be 3-30 characters, contain only letters, numbers, underscore, and dash, and cannot be a reserved word' 
             });
         }
 
@@ -430,52 +460,72 @@ io.on('connection', (socket) => {
 
     // Helper to finish the join process after auth success
     async function finalizeJoin(socket, username) {
-        // Sistem mesajını kaydet ve gönder
-        await db.saveChatMessage('System', `${username} connected to node.`);
-        socket.broadcast.emit('chat message', { 
-            user: 'System', 
-            text: `${username} connected to node.` 
-        });
-        
-        // Kullanıcıya son chat mesajlarını gönder
-        const { data: chatHistory } = await db.getChatMessages(20); // Son 20 mesaj
-        if (chatHistory && chatHistory.length > 0) {
-            chatHistory.forEach(msg => {
-                socket.emit('chat message', { 
-                    user: msg.username, 
-                    text: msg.message,
-                    timestamp: msg.timestamp 
-                });
+        try {
+            // Sistem mesajını kaydet ve gönder
+            await db.saveChatMessage('System', `${username} connected to node.`);
+            socket.broadcast.emit('chat message', { 
+                user: 'System', 
+                text: `${username} connected to node.` 
             });
-        }
-        
-        // Kullanıcıyı veritabanına ekle veya skoru getir
-        const { data: existingPlayer } = await db.findPlayer(username);
-        
-        if (existingPlayer) {
-            // Mevcut kullanıcının skorunu ve level'ını gönder
-            socket.emit('sync score', existingPlayer.score);
-            socket.emit('sync level', existingPlayer.level || 1);
-            console.log(`🔄 Synced user ${username}: Score ${existingPlayer.score}, Level ${existingPlayer.level || 1}`);
             
-            // Enerji durumunu güncelle ve gönder
-            const energyResult = await db.getPlayerEnergy(username);
-            if (energyResult.data) {
-                socket.emit('sync energy', energyResult.data);
+            // Kullanıcıya son chat mesajlarını gönder
+            const { data: chatHistory, error: chatError } = await db.getChatMessages(20); // Son 20 mesaj
+            if (chatError) {
+                console.error(`Failed to load chat history for ${username}:`, chatError);
+            } else if (chatHistory && chatHistory.length > 0) {
+                chatHistory.forEach(msg => {
+                    socket.emit('chat message', { 
+                        user: msg.username, 
+                        text: msg.message,
+                        timestamp: msg.timestamp 
+                    });
+                });
             }
-        } else {
-            // Bu durumda kullanıcı JWT ile authenticated ama database'de yok
-            // Bu normal bir durum değil, ama güvenlik için handle edelim
-            console.warn(`Authenticated user ${username} not found in database`);
-            socket.emit('sync energy', { 
-                energy: INITIAL_ENERGY, 
-                energyAdded: 0, 
-                nextEnergyIn: ENERGY_REGENERATION_MINUTES 
-            });
-            socket.emit('sync level', 1); // Default level
+            
+            // Kullanıcıyı veritabanına ekle veya skoru getir
+            const { data: existingPlayer, error: playerError } = await db.findPlayer(username);
+            
+            if (playerError) {
+                console.error(`Failed to find player ${username}:`, playerError);
+                socket.emit('auth_error', 'Database error occurred');
+                return;
+            }
+            
+            if (existingPlayer) {
+                // Mevcut kullanıcının skorunu ve level'ını gönder
+                socket.emit('sync score', existingPlayer.score || 0);
+                socket.emit('sync level', existingPlayer.level || 1);
+                console.log(`🔄 Synced user ${username}: Score ${existingPlayer.score || 0}, Level ${existingPlayer.level || 1}`);
+                
+                // Enerji durumunu güncelle ve gönder
+                const energyResult = await db.getPlayerEnergy(username);
+                if (energyResult.error) {
+                    console.error(`Failed to get energy for ${username}:`, energyResult.error);
+                    socket.emit('sync energy', { 
+                        energy: INITIAL_ENERGY, 
+                        energyAdded: 0, 
+                        nextEnergyIn: ENERGY_REGENERATION_MINUTES 
+                    });
+                } else if (energyResult.data) {
+                    socket.emit('sync energy', energyResult.data);
+                }
+            } else {
+                // Bu durumda kullanıcı JWT ile authenticated ama database'de yok
+                // Bu normal bir durum değil, ama güvenlik için handle edelim
+                console.warn(`Authenticated user ${username} not found in database`);
+                socket.emit('sync energy', { 
+                    energy: INITIAL_ENERGY, 
+                    energyAdded: 0, 
+                    nextEnergyIn: ENERGY_REGENERATION_MINUTES 
+                });
+                socket.emit('sync level', 1); // Default level
+            }
+            
+            await updateLeaderboard();
+        } catch (error) {
+            console.error(`Error in finalizeJoin for ${username}:`, error.message);
+            socket.emit('auth_error', 'Failed to initialize user session');
         }
-        
-        updateLeaderboard();
     }
 
     // 2. Chat System (Protected)
@@ -487,20 +537,40 @@ io.on('connection', (socket) => {
         const cleanMsg = validator.sanitizeString(msg, 500);
         if (cleanMsg.length === 0 || cleanMsg.length > 500) return;
         
-        // Rate limiting for chat (max 5 messages per 10 seconds)
+        // Enhanced rate limiting for chat (per user basis)
         const now = Date.now();
         if (!socket.lastMessages) socket.lastMessages = [];
+        
+        // Clean old messages (older than 10 seconds)
         socket.lastMessages = socket.lastMessages.filter(time => now - time < 10000);
         
-        if (socket.lastMessages.length >= 5) {
+        // Progressive rate limiting based on user behavior
+        const messageCount = socket.lastMessages.length;
+        let maxMessages = 5; // Default: 5 messages per 10 seconds
+        
+        // Reduce limit for users who consistently hit the limit
+        if (socket.rateLimitViolations && socket.rateLimitViolations > 3) {
+            maxMessages = 3; // Stricter limit for repeat offenders
+        }
+        
+        if (messageCount >= maxMessages) {
+            if (!socket.rateLimitViolations) socket.rateLimitViolations = 0;
+            socket.rateLimitViolations++;
+            
+            const waitTime = Math.ceil((10000 - (now - socket.lastMessages[0])) / 1000);
             socket.emit('chat message', { 
                 user: 'System', 
-                text: 'Rate limit exceeded. Please slow down.' 
+                text: `Rate limit exceeded. Please wait ${waitTime} seconds before sending another message.` 
             });
             return;
         }
         
         socket.lastMessages.push(now);
+        
+        // Reset violation count on good behavior
+        if (messageCount === 0 && socket.rateLimitViolations > 0) {
+            socket.rateLimitViolations = Math.max(0, socket.rateLimitViolations - 1);
+        }
         
         // Mesajı database'e kaydet
         db.saveChatMessage(socket.currentUser, cleanMsg);
@@ -614,42 +684,121 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 6. Disconnect
+    // 6. Disconnect - Memory leak prevention
     socket.on('disconnect', () => { 
-        if(socket.currentUser) console.log(`${socket.currentUser} disconnected`); 
+        if(socket.currentUser) {
+            console.log(`${socket.currentUser} disconnected`);
+            
+            // Cleanup timers and intervals to prevent memory leaks
+            if (socket.energyTimer) {
+                clearInterval(socket.energyTimer);
+                socket.energyTimer = null;
+            }
+            
+            // Clear rate limiting arrays
+            if (socket.lastMessages) {
+                socket.lastMessages = null;
+            }
+            
+            // Clear user data
+            socket.currentUser = null;
+            socket.userId = null;
+            socket.isAuthenticated = false;
+        }
     });
 
-    async function updateLeaderboard() {
-        const { data, error } = await db.getLeaderboard(10);
-        if (data && !error) io.emit('update leaderboard', data);
+    // Leaderboard caching
+    let leaderboardCache = null;
+    let lastLeaderboardUpdate = 0;
+    const LEADERBOARD_CACHE_DURATION = 30000; // 30 seconds
+
+    async function updateLeaderboard(forceUpdate = false) {
+        try {
+            const now = Date.now();
+            
+            // Use cache if available and not expired
+            if (!forceUpdate && leaderboardCache && (now - lastLeaderboardUpdate) < LEADERBOARD_CACHE_DURATION) {
+                io.emit('update leaderboard', leaderboardCache);
+                return;
+            }
+            
+            const { data, error } = await db.getLeaderboard(10);
+            if (error) {
+                console.error('Failed to update leaderboard:', error);
+                // Use cached data if available
+                if (leaderboardCache) {
+                    io.emit('update leaderboard', leaderboardCache);
+                }
+                return;
+            }
+            
+            if (data) {
+                leaderboardCache = data;
+                lastLeaderboardUpdate = now;
+                io.emit('update leaderboard', data);
+            }
+        } catch (error) {
+            console.error('Leaderboard update error:', error.message);
+            // Use cached data as fallback
+            if (leaderboardCache) {
+                io.emit('update leaderboard', leaderboardCache);
+            }
+        }
     }
 });
 
 // --- ENERGY REGENERATION SYSTEM ---
-setInterval(async () => {
-    // Her dakika tüm aktif oyuncuları kontrol et ve enerji durumlarını güncelle
-    const connectedSockets = await io.fetchSockets();
-    
-    for (const socket of connectedSockets) {
-        if (socket.currentUser && socket.isAuthenticated) {
-            try {
-                const result = await db.getPlayerEnergy(socket.currentUser);
-                if (result.data && result.data.energyAdded > 0) {
-                    // Enerji yenilendiyse oyuncuya bildir
-                    socket.emit('sync energy', result.data);
-                    const energyMsg = `Energy regenerated! +${result.data.energyAdded} energy`;
-                    db.saveChatMessage('System', energyMsg);
-                    socket.emit('chat message', { 
-                        user: 'System', 
-                        text: energyMsg 
-                    });
+const energyRegenerationInterval = setInterval(async () => {
+    try {
+        // Her dakika tüm aktif oyuncuları kontrol et ve enerji durumlarını güncelle
+        const connectedSockets = await io.fetchSockets();
+        
+        for (const socket of connectedSockets) {
+            if (socket.currentUser && socket.isAuthenticated) {
+                try {
+                    const result = await db.getPlayerEnergy(socket.currentUser);
+                    if (result.data && result.data.energyAdded > 0) {
+                        // Enerji yenilendiyse oyuncuya bildir
+                        socket.emit('sync energy', result.data);
+                        const energyMsg = `Energy regenerated! +${result.data.energyAdded} energy`;
+                        await db.saveChatMessage('System', energyMsg);
+                        socket.emit('chat message', { 
+                            user: 'System', 
+                            text: energyMsg 
+                        });
+                    }
+                } catch (err) {
+                    console.error(`Energy regeneration error for user ${socket.currentUser}:`, err.message);
                 }
-            } catch (err) {
-                console.error("Energy regeneration error:", err.message);
             }
         }
+    } catch (err) {
+        console.error("Energy regeneration system error:", err.message);
     }
 }, 60000); // Her dakika kontrol et
+
+// Graceful shutdown - cleanup intervals
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, cleaning up...');
+    if (energyRegenerationInterval) {
+        clearInterval(energyRegenerationInterval);
+    }
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received, cleaning up...');
+    if (energyRegenerationInterval) {
+        clearInterval(energyRegenerationInterval);
+    }
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
+});
 
 server.listen(PORT, () => {
   console.log(`🚀 CipherNode Server running on http://localhost:${PORT}`);
@@ -657,4 +806,24 @@ server.listen(PORT, () => {
   console.log(`⚡ Energy regeneration: 1 energy per ${ENERGY_REGENERATION_MINUTES} minutes`);
   console.log(`🛡️  Rate limiting: ${process.env.RATE_LIMIT_MAX_REQUESTS || 100} requests per ${(parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000)/60000} minutes`);
   console.log(`🎮 Game settings: ${GAME_ENERGY_COST} energy per game, max ${MAX_ENERGY} energy`);
+  
+  // Memory usage monitoring
+  const memUsage = process.memoryUsage();
+  console.log(`💾 Memory usage: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB / ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`);
 });
+
+// Memory monitoring interval (every 5 minutes)
+if (NODE_ENV === 'production') {
+    setInterval(() => {
+        const memUsage = process.memoryUsage();
+        const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+        const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
+        
+        console.log(`💾 Memory: ${heapUsedMB}MB / ${heapTotalMB}MB`);
+        
+        // Warning if memory usage is high
+        if (heapUsedMB > 200) {
+            console.warn(`⚠️  High memory usage detected: ${heapUsedMB}MB`);
+        }
+    }, 300000); // 5 minutes
+}

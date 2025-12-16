@@ -10,6 +10,11 @@ class SimpleDB {
         this.bcryptRounds = parseInt(process.env.BCRYPT_ROUNDS) || 10;
         this.jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
         this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
+        
+        // JWT Secret rotation warning
+        if (this.jwtSecret === 'your-secret-key') {
+            console.warn('⚠️  WARNING: Using default JWT secret! Change JWT_SECRET in production!');
+        }
         this.energyRegenMinutes = parseInt(process.env.ENERGY_REGENERATION_MINUTES) || 5;
         this.maxEnergy = parseInt(process.env.MAX_ENERGY) || 100;
         this.initialEnergy = parseInt(process.env.INITIAL_ENERGY) || 100;
@@ -21,25 +26,49 @@ class SimpleDB {
         try {
             if (fs.existsSync(this.dbPath)) {
                 const data = fs.readFileSync(this.dbPath, 'utf8');
+                
+                if (!data.trim()) {
+                    console.warn('Database file is empty, initializing with empty data');
+                    this.players = [];
+                    this.chatMessages = [];
+                    return;
+                }
+                
                 const parsedData = JSON.parse(data);
                 
                 // Backward compatibility - eğer array ise (eski format)
                 if (Array.isArray(parsedData)) {
                     this.players = parsedData;
                     this.chatMessages = [];
+                    console.log('Loaded database in legacy format, will upgrade on next save');
                 } else {
                     // Yeni format - object with players and chatMessages
                     this.players = parsedData.players || [];
                     this.chatMessages = parsedData.chatMessages || [];
                 }
+                
+                console.log(`Database loaded: ${this.players.length} players, ${this.chatMessages.length} chat messages`);
             } else {
+                console.log('Database file not found, creating new database');
                 this.players = [];
                 this.chatMessages = [];
             }
         } catch (error) {
-            console.log('DB Load Error:', error.message);
+            console.error('DB Load Error:', error.message);
+            console.log('Initializing with empty database due to load error');
             this.players = [];
             this.chatMessages = [];
+            
+            // Create backup of corrupted file
+            if (fs.existsSync(this.dbPath)) {
+                try {
+                    const backupPath = `${this.dbPath}.corrupted.${Date.now()}`;
+                    fs.copyFileSync(this.dbPath, backupPath);
+                    console.log(`Corrupted database backed up to: ${backupPath}`);
+                } catch (backupError) {
+                    console.error('Failed to backup corrupted database:', backupError.message);
+                }
+            }
         }
     }
 

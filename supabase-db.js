@@ -18,6 +18,11 @@ class SupabaseDB {
         this.bcryptRounds = parseInt(process.env.BCRYPT_ROUNDS) || 10;
         this.jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
         this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
+        
+        // JWT Secret rotation warning
+        if (this.jwtSecret === 'your-secret-key') {
+            console.warn('⚠️  WARNING: Using default JWT secret! Change JWT_SECRET in production!');
+        }
         this.maxEnergy = parseInt(process.env.MAX_ENERGY) || 100;
         this.initialEnergy = parseInt(process.env.INITIAL_ENERGY) || 100;
         
@@ -27,7 +32,7 @@ class SupabaseDB {
     async initDatabase() {
         try {
             // Test connection
-            const { data, error } = await this.supabase.from('users').select('count').limit(1);
+            const { error } = await this.supabase.from('users').select('count').limit(1);
             if (error) throw error;
             
             console.log('✅ Connected to Supabase Database');
@@ -414,7 +419,7 @@ class SupabaseDB {
                 });
             
             // Check for new achievements (simplified for now)
-            const newAchievements = await this.checkAchievements(user.id, updatedUser);
+            const newAchievements = await this.checkAchievements(user.id);
             
             const { password, ...userData } = updatedUser;
             return { data: userData, error: null, newAchievements };
@@ -426,7 +431,7 @@ class SupabaseDB {
     }
 
     // Basit başarım kontrolü
-    async checkAchievements(userId, userStats) {
+    async checkAchievements(userId) {
         try {
             // Şimdilik basit achievement sistemi
             // Gelecekte daha detaylı achievement tablosu kullanılabilir
