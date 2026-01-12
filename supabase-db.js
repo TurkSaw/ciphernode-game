@@ -7,25 +7,30 @@ class SupabaseDB {
         // Supabase configuration
         this.supabaseUrl = process.env.SUPABASE_URL;
         this.supabaseKey = process.env.SUPABASE_ANON_KEY;
-        
+
         if (!this.supabaseUrl || !this.supabaseKey) {
             console.warn('⚠️  Supabase credentials not found, falling back to JSON database');
             return null;
         }
-        
+
         this.supabase = createClient(this.supabaseUrl, this.supabaseKey);
-        
+
         this.bcryptRounds = parseInt(process.env.BCRYPT_ROUNDS) || 10;
-        this.jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
+        this.jwtSecret = process.env.JWT_SECRET;
         this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
-        
-        // JWT Secret rotation warning
-        if (this.jwtSecret === 'your-secret-key') {
-            console.warn('⚠️  WARNING: Using default JWT secret! Change JWT_SECRET in production!');
+
+        // JWT Secret validation
+        if (!this.jwtSecret) {
+            if (process.env.NODE_ENV === 'production') {
+                throw new Error('❌ CRITICAL: JWT_SECRET must be set in production!');
+            } else {
+                console.warn('⚠️  WARNING: JWT_SECRET not found, using insecure default for development only!');
+                this.jwtSecret = 'dev-secret-key-do-not-use-in-prod';
+            }
         }
         this.maxEnergy = parseInt(process.env.MAX_ENERGY) || 100;
         this.initialEnergy = parseInt(process.env.INITIAL_ENERGY) || 100;
-        
+
         this.initDatabase();
     }
 
@@ -36,7 +41,7 @@ class SupabaseDB {
             if (error) {
                 throw new Error(`Supabase connection test failed: ${error.message}`);
             }
-            
+
             console.log('✅ Connected to Supabase Database');
             return true;
         } catch (error) {
@@ -63,14 +68,14 @@ class SupabaseDB {
                 .select('id')
                 .or(`username.eq.${username},email.eq.${email.toLowerCase()}`)
                 .limit(1);
-            
+
             if (existingUser && existingUser.length > 0) {
                 return { data: null, error: 'Username or email already exists' };
             }
 
             // Hash password
             const hashedPassword = await bcrypt.hash(password, this.bcryptRounds);
-            
+
             // Insert user
             const { data: newUser, error } = await this.supabase
                 .from('users')
@@ -84,13 +89,13 @@ class SupabaseDB {
                 })
                 .select()
                 .single();
-            
+
             if (error) throw error;
-            
+
             // Remove password from response
             const { password: _, ...userData } = newUser;
             return { data: userData, error: null };
-            
+
         } catch (error) {
             console.error('Registration error:', error);
             return { data: null, error: 'Registration failed' };
@@ -115,7 +120,7 @@ class SupabaseDB {
                 .select('*')
                 .eq('email', email.toLowerCase())
                 .single();
-            
+
             if (error || !user) {
                 return { data: null, error: 'Invalid email or password' };
             }
@@ -128,10 +133,10 @@ class SupabaseDB {
 
             // Generate JWT token
             const token = jwt.sign(
-                { 
-                    userId: user.id, 
+                {
+                    userId: user.id,
                     username: user.username,
-                    email: user.email 
+                    email: user.email
                 },
                 this.jwtSecret,
                 { expiresIn: this.jwtExpiresIn }
@@ -145,14 +150,14 @@ class SupabaseDB {
 
             // Remove password from response
             const { password: _, ...userData } = user;
-            return { 
-                data: { 
-                    user: userData, 
-                    token 
-                }, 
-                error: null 
+            return {
+                data: {
+                    user: userData,
+                    token
+                },
+                error: null
             };
-            
+
         } catch (error) {
             console.error('Login error:', error);
             return { data: null, error: 'Login failed' };
@@ -182,12 +187,12 @@ class SupabaseDB {
                 .eq('username', username)
                 .select()
                 .single();
-            
+
             if (error) throw error;
-            
+
             const { password, ...userData } = user;
             return { data: userData, error: null };
-            
+
         } catch (error) {
             console.error('Score update error:', error);
             return { data: null, error: 'Score update failed' };
@@ -203,21 +208,21 @@ class SupabaseDB {
                 .select('id, energy, last_energy_update')
                 .eq('username', username)
                 .single();
-            
+
             if (userError || !user) {
                 return { data: null, error: 'User not found' };
             }
-            
+
             // Calculate energy regeneration
             const now = new Date();
             const lastUpdate = new Date(user.last_energy_update);
             const minutesPassed = Math.floor((now - lastUpdate) / (1000 * 60));
             const energyToAdd = Math.floor(minutesPassed / 5); // 1 energy per 5 minutes
-            
+
             // Calculate new energy
             let newEnergy = (user.energy || this.initialEnergy) + energyToAdd + energyChange;
             newEnergy = Math.max(0, Math.min(this.maxEnergy, newEnergy));
-            
+
             // Update user energy
             const { error: updateError } = await this.supabase
                 .from('users')
@@ -226,18 +231,18 @@ class SupabaseDB {
                     last_energy_update: now.toISOString()
                 })
                 .eq('id', user.id);
-            
+
             if (updateError) throw updateError;
-            
-            return { 
-                data: { 
-                    energy: newEnergy, 
+
+            return {
+                data: {
+                    energy: newEnergy,
                     energyAdded: energyToAdd,
                     nextEnergyIn: 5 - (minutesPassed % 5)
-                }, 
-                error: null 
+                },
+                error: null
             };
-            
+
         } catch (error) {
             console.error('Energy update error:', error);
             return { data: null, error: 'Energy update failed' };
@@ -257,18 +262,18 @@ class SupabaseDB {
                 .select('*')
                 .eq('username', username)
                 .single();
-            
+
             if (error && error.code !== 'PGRST116') { // PGRST116 = not found
                 throw error;
             }
-            
+
             if (user) {
                 const { password, ...userData } = user;
                 return { data: userData, error: null };
             }
-            
+
             return { data: null, error: null };
-            
+
         } catch (error) {
             console.error('Find player error:', error);
             return { data: null, error: 'Database error' };
@@ -282,11 +287,11 @@ class SupabaseDB {
                 .from('leaderboard')
                 .select('username, display_name, score, level, rank')
                 .limit(limit);
-            
+
             if (error) throw error;
-            
+
             return { data: data || [], error: null };
-            
+
         } catch (error) {
             console.error('Leaderboard error:', error);
             return { data: [], error: 'Leaderboard fetch failed' };
@@ -300,11 +305,11 @@ class SupabaseDB {
                 .from('users')
                 .select('username')
                 .eq('username', username);
-            
+
             if (error) throw error;
-            
+
             return { data: data || [], error: null };
-            
+
         } catch (error) {
             console.error('Username check error:', error);
             return { data: [], error: 'Username check failed' };
@@ -315,25 +320,25 @@ class SupabaseDB {
     async updateProfile(username, profileData) {
         try {
             const updateData = { updated_at: new Date().toISOString() };
-            
+
             if (profileData.displayName !== undefined) updateData.display_name = profileData.displayName;
             if (profileData.bio !== undefined) updateData.bio = profileData.bio;
             if (profileData.avatar !== undefined) updateData.avatar = profileData.avatar;
             if (profileData.country !== undefined) updateData.country = profileData.country;
             if (profileData.theme !== undefined) updateData.theme = profileData.theme;
-            
+
             const { data: user, error } = await this.supabase
                 .from('users')
                 .update(updateData)
                 .eq('username', username)
                 .select()
                 .single();
-            
+
             if (error) throw error;
-            
+
             const { password, ...userData } = user;
             return { data: userData, error: null };
-            
+
         } catch (error) {
             console.error('Profile update error:', error);
             return { data: null, error: 'Profile update failed' };
@@ -351,9 +356,9 @@ class SupabaseDB {
                 `)
                 .eq('username', username)
                 .single();
-            
+
             if (error) throw error;
-            
+
             const stats = {
                 totalGames: user.total_games || 0,
                 totalPlayTime: user.total_play_time || 0,
@@ -365,9 +370,9 @@ class SupabaseDB {
                 joinDate: user.created_at,
                 lastPlayed: user.last_played
             };
-            
+
             return { data: stats, error: null };
-            
+
         } catch (error) {
             console.error('Get stats error:', error);
             return { data: null, error: 'Failed to fetch stats' };
@@ -383,16 +388,16 @@ class SupabaseDB {
                 .select('id, total_games, total_play_time, current_streak, max_streak, best_time')
                 .eq('username', username)
                 .single();
-            
+
             if (userError) throw userError;
-            
+
             // Calculate new stats
             const newTotalGames = (user.total_games || 0) + 1;
             const newTotalPlayTime = (user.total_play_time || 0) + gameTime;
             const newCurrentStreak = won ? (user.current_streak || 0) + 1 : 0;
             const newMaxStreak = Math.max(user.max_streak || 0, newCurrentStreak);
             const newBestTime = won && (!user.best_time || gameTime < user.best_time) ? gameTime : user.best_time;
-            
+
             // Update user stats
             const { data: updatedUser, error: updateError } = await this.supabase
                 .from('users')
@@ -408,9 +413,9 @@ class SupabaseDB {
                 .eq('id', user.id)
                 .select()
                 .single();
-            
+
             if (updateError) throw updateError;
-            
+
             // Insert game session record
             await this.supabase
                 .from('game_sessions')
@@ -421,13 +426,13 @@ class SupabaseDB {
                     game_time: gameTime,
                     won: won
                 });
-            
+
             // Check for new achievements (simplified for now)
             const newAchievements = await this.checkAchievements(user.id);
-            
+
             const { password, ...userData } = updatedUser;
             return { data: userData, error: null, newAchievements };
-            
+
         } catch (error) {
             console.error('Game stats update error:', error);
             return { data: null, error: 'Stats update failed' };
@@ -455,34 +460,34 @@ class SupabaseDB {
                 .select('id, total_games, score, best_time, current_streak, total_play_time')
                 .eq('username', username)
                 .single();
-            
+
             if (userError) throw userError;
-            
+
             // Get all achievements
             const { data: allAchievements, error: achievementsError } = await this.supabase
                 .from('achievements')
                 .select('*');
-            
+
             if (achievementsError) throw achievementsError;
-            
+
             // Get user's unlocked achievements
             const { data: userAchievements, error: userAchError } = await this.supabase
                 .from('user_achievements')
                 .select('achievement_id, unlocked_at')
                 .eq('user_id', user.id);
-            
+
             if (userAchError) throw userAchError;
-            
+
             const unlockedIds = (userAchievements || []).map(ua => ua.achievement_id);
-            
+
             // Separate unlocked and locked achievements
             const unlocked = [];
             const locked = [];
             let totalPoints = 0;
-            
+
             for (const achievement of (allAchievements || [])) {
                 const isUnlocked = unlockedIds.includes(achievement.id);
-                
+
                 if (isUnlocked) {
                     const userAchievement = userAchievements.find(ua => ua.achievement_id === achievement.id);
                     unlocked.push({
@@ -506,7 +511,7 @@ class SupabaseDB {
                     }
                 }
             }
-            
+
             const achievements = {
                 unlocked,
                 locked,
@@ -514,7 +519,7 @@ class SupabaseDB {
                 unlockedCount: unlocked.length,
                 totalCount: (allAchievements || []).length
             };
-            
+
             return { data: achievements, error: null };
         } catch (error) {
             console.error('Get achievements error:', error);
@@ -557,7 +562,7 @@ class SupabaseDB {
     }
 
     // --- CHAT SYSTEM ---
-    
+
     // Chat mesajı kaydetme
     async saveChatMessage(username, message) {
         try {
@@ -567,7 +572,7 @@ class SupabaseDB {
                 .select('id')
                 .eq('username', username)
                 .single();
-            
+
             const chatMessage = {
                 user_id: user ? user.id : null,
                 username: username,
@@ -580,9 +585,9 @@ class SupabaseDB {
                 .insert(chatMessage)
                 .select()
                 .single();
-            
+
             if (error) throw error;
-            
+
             return { data, error: null };
 
         } catch (error) {
@@ -599,9 +604,9 @@ class SupabaseDB {
                 .select('*')
                 .order('created_at', { ascending: false })
                 .limit(limit);
-            
+
             if (error) throw error;
-            
+
             // Reverse to show oldest first
             return { data: (data || []).reverse(), error: null };
 
@@ -618,9 +623,9 @@ class SupabaseDB {
                 .from('chat_messages')
                 .delete()
                 .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
-            
+
             if (error) throw error;
-            
+
             return { data: true, error: null };
         } catch (error) {
             console.error('Clear chat messages error:', error);

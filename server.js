@@ -6,6 +6,9 @@ import { fileURLToPath } from 'url';
 import bodyParser from 'body-parser';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import authRoutes from './routes/auth.routes.js';
+import userRoutes from './routes/user.routes.js';
+import validator from './utils/validator.js';
 
 // ES modules __dirname equivalent
 const __filename = fileURLToPath(import.meta.url);
@@ -15,7 +18,7 @@ const __dirname = path.dirname(__filename);
 dotenv.config();
 
 const app = express();
-const server = http.createServer(app); 
+const server = http.createServer(app);
 
 // Supabase-only database configuration
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
@@ -51,8 +54,8 @@ const limiter = rateLimit({
 });
 
 // CORS configuration
-const allowedOrigins = process.env.ALLOWED_ORIGINS ? 
-    process.env.ALLOWED_ORIGINS.split(',') : 
+const allowedOrigins = process.env.ALLOWED_ORIGINS ?
+    process.env.ALLOWED_ORIGINS.split(',') :
     ['http://localhost:3000', 'http://127.0.0.1:3000'];
 
 // Production'da Render URL'ini otomatik ekle
@@ -81,17 +84,17 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    
+
     // Security Headers
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
-    
+
     // Content Security Policy
     if (NODE_ENV === 'production') {
-        res.setHeader('Content-Security-Policy', 
+        res.setHeader('Content-Security-Policy',
             "default-src 'self'; " +
             "script-src 'self' 'unsafe-inline'; " +
             "style-src 'self' 'unsafe-inline' fonts.googleapis.com; " +
@@ -101,7 +104,7 @@ app.use((req, res, next) => {
             "frame-ancestors 'none';"
         );
     }
-    
+
     if (req.method === 'OPTIONS') {
         res.sendStatus(200);
         return;
@@ -113,6 +116,21 @@ app.use((req, res, next) => {
 app.use(limiter); // Apply rate limiting to all requests
 app.use(bodyParser.json({ limit: '10mb' })); // Limit JSON payload size
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Database middleware
+app.use((req, res, next) => {
+    req.db = db;
+
+    // Return 503 if database is offline, but allow health check and static assets
+    if (req.path.startsWith('/api') && !dbConnectionHealthy) {
+        return res.status(503).json({
+            error: 'Service Unavailable',
+            message: 'Database connection is currently unavailable.'
+        });
+    }
+
+    next();
+});
 
 // --- PWA ROUTES ---
 // Serve manifest.json with correct content-type
@@ -139,7 +157,7 @@ app.get('/health', async (req, res) => {
     try {
         let dbStatus = 'unknown';
         let dbError = null;
-        
+
         if (dbConnectionHealthy) {
             try {
                 // Test database connection
@@ -155,7 +173,7 @@ app.get('/health', async (req, res) => {
             dbStatus = 'unavailable';
             dbError = 'Database connection not established';
         }
-        
+
         const healthData = {
             status: dbConnectionHealthy ? 'healthy' : 'degraded',
             timestamp: new Date().toISOString(),
@@ -176,10 +194,10 @@ app.get('/health', async (req, res) => {
                 gameProgress: dbConnectionHealthy
             }
         };
-        
+
         const statusCode = dbConnectionHealthy ? 200 : 503;
         res.status(statusCode).json(healthData);
-        
+
     } catch (error) {
         console.error('Health check failed:', error.message);
         res.status(503).json({
@@ -201,24 +219,24 @@ async function initializeDatabase() {
     try {
         // Load Supabase database module
         SupabaseDB = await loadDatabaseModule();
-        
+
         console.log("🔄 Initializing Supabase connection...");
         db = new SupabaseDB();
-        
+
         if (!db) {
             throw new Error('Failed to create Supabase database instance');
         }
-        
+
         // Test Supabase connection
         await db.initDatabase();
         dbConnectionHealthy = true;
         console.log("🚀 Successfully connected to Supabase Database");
-        
+
     } catch (error) {
         console.error("💥 Critical Supabase initialization error:", error.message);
         console.error("Please check your Supabase configuration and network connection.");
         dbConnectionHealthy = false;
-        
+
         // Create a minimal fallback database interface for graceful degradation
         db = {
             async registerUser() { return { data: null, error: 'Supabase connection unavailable' }; },
@@ -229,9 +247,9 @@ async function initializeDatabase() {
             async getChatMessages() { return { data: [], error: 'Supabase connection unavailable' }; },
             verifyToken() { return { data: null, error: 'Supabase connection unavailable' }; }
         };
-        
+
         console.log("🆘 Running in emergency mode - please fix Supabase configuration");
-        
+
         // Exit in production to prevent running with broken database
         if (NODE_ENV === 'production') {
             console.error("🚨 Exiting in production mode due to database failure");
@@ -245,55 +263,10 @@ initializeDatabase().catch(error => {
     console.error("🚨 Failed to initialize database:", error.message);
 });
 
+
 // --- INPUT VALIDATION HELPERS ---
-const validator = {
-    isEmail: (email) => {
-        const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-        return emailRegex.test(email) && email.length <= 254;
-    },
-    
-    isUsername: (username) => {
-        const usernameRegex = /^[a-zA-Z0-9_-]+$/;
-        return usernameRegex.test(username) && username.length >= 3 && username.length <= 30;
-    },
-    
-    isPassword: (password) => {
-        return password && password.length >= 6 && password.length <= 128;
-    },
-    
-    sanitizeString: (str, maxLength = 255) => {
-        if (typeof str !== 'string') return '';
-        return str.trim()
-            .slice(0, maxLength)
-            .replace(/[<>]/g, '') // Remove HTML tags
-            .replace(/javascript:/gi, '') // Remove javascript: protocol
-            .replace(/on\w+=/gi, '') // Remove event handlers
-            .replace(/data:/gi, ''); // Remove data: protocol
-    },
-    
-    // Enhanced validation for usernames
-    isValidUsername: (username) => {
-        if (typeof username !== 'string') return false;
-        if (username.length < 3 || username.length > 30) return false;
-        
-        // Check for valid characters
-        if (!/^[a-zA-Z0-9_-]+$/.test(username)) return false;
-        
-        // Prevent reserved words
-        const reserved = ['admin', 'system', 'root', 'null', 'undefined', 'anonymous'];
-        if (reserved.includes(username.toLowerCase())) return false;
-        
-        return true;
-    },
-    
-    isValidScore: (score) => {
-        return Number.isInteger(score) && score >= 0 && score <= 1000000;
-    },
-    
-    isValidGameTime: (time) => {
-        return Number.isInteger(time) && time >= 0 && time <= 3600; // Max 1 hour
-    }
-};
+// Imported from utils/validator.js
+
 
 // --- AUTH MIDDLEWARE ---
 function authenticateToken(req, res, next) {
@@ -314,186 +287,9 @@ function authenticateToken(req, res, next) {
 }
 
 // --- AUTH ROUTES ---
-app.post('/api/register', async (req, res) => {
-    try {
-        const { username, email, password } = req.body;
+app.use('/api', authRoutes());
+app.use('/api', userRoutes(authenticateToken));
 
-        // Input validation
-        if (!username || !email || !password) {
-            return res.status(400).json({ error: 'Username, email and password are required' });
-        }
-
-        // Sanitize inputs
-        const cleanUsername = validator.sanitizeString(username, 30);
-        const cleanEmail = validator.sanitizeString(email, 254).toLowerCase();
-        
-        // Validate username
-        if (!validator.isValidUsername(cleanUsername)) {
-            return res.status(400).json({ 
-                error: 'Username must be 3-30 characters, contain only letters, numbers, underscore, and dash, and cannot be a reserved word' 
-            });
-        }
-
-        // Validate email
-        if (!validator.isEmail(cleanEmail)) {
-            return res.status(400).json({ error: 'Invalid email format' });
-        }
-
-        // Validate password
-        if (!validator.isPassword(password)) {
-            return res.status(400).json({ error: 'Password must be 6-128 characters' });
-        }
-
-        // Check for common weak passwords
-        const weakPasswords = ['password', '123456', 'password123', 'admin', 'qwerty'];
-        if (weakPasswords.includes(password.toLowerCase())) {
-            return res.status(400).json({ error: 'Password is too weak. Please choose a stronger password' });
-        }
-
-        const result = await db.registerUser(cleanUsername, cleanEmail, password);
-        
-        if (result.error) {
-            return res.status(400).json({ error: result.error });
-        }
-
-        res.status(201).json({ 
-            message: 'User registered successfully', 
-            user: result.data 
-        });
-    } catch (error) {
-        console.error('Registration error:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-app.post('/api/login', async (req, res) => {
-    try {
-        const { email, password } = req.body;
-
-        if (!email || !password) {
-            return res.status(400).json({ error: 'Email and password are required' });
-        }
-
-        // Sanitize and validate email
-        const cleanEmail = validator.sanitizeString(email, 254).toLowerCase();
-        if (!validator.isEmail(cleanEmail)) {
-            return res.status(400).json({ error: 'Invalid email format' });
-        }
-
-        // Validate password length (don't reveal if it's too short for security)
-        if (typeof password !== 'string' || password.length > 128) {
-            return res.status(401).json({ error: 'Invalid email or password' });
-        }
-
-        const result = await db.loginUser(cleanEmail, password);
-        
-        if (result.error) {
-            return res.status(401).json({ error: result.error });
-        }
-
-        res.json({
-            message: 'Login successful',
-            token: result.data.token,
-            user: result.data.user
-        });
-    } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// Protected route example
-app.get('/api/profile', authenticateToken, async (req, res) => {
-    const { data: user } = await db.findPlayer(req.user.username);
-    if (user) {
-        const { password, ...userProfile } = user;
-        res.json({ user: userProfile });
-    } else {
-        res.status(404).json({ error: 'User not found' });
-    }
-});
-
-// Profil güncelleme
-app.put('/api/profile', authenticateToken, async (req, res) => {
-    try {
-        const { displayName, bio, avatar, country, theme } = req.body;
-        
-        // Sanitize and validate inputs
-        const cleanDisplayName = displayName ? validator.sanitizeString(displayName, 50) : undefined;
-        const cleanBio = bio ? validator.sanitizeString(bio, 200) : undefined;
-        const cleanAvatar = avatar ? validator.sanitizeString(avatar, 10) : undefined;
-        const cleanCountry = country ? validator.sanitizeString(country, 5) : undefined;
-        const cleanTheme = theme ? validator.sanitizeString(theme, 20) : undefined;
-        
-        // Validate display name
-        if (cleanDisplayName !== undefined) {
-            if (cleanDisplayName.length === 0 || cleanDisplayName.length > 50) {
-                return res.status(400).json({ error: 'Display name must be 1-50 characters' });
-            }
-        }
-        
-        // Validate bio
-        if (cleanBio !== undefined && cleanBio.length > 200) {
-            return res.status(400).json({ error: 'Bio must be less than 200 characters' });
-        }
-
-        // Validate theme
-        const allowedThemes = ['cyberpunk', 'dark', 'blue', 'purple'];
-        if (cleanTheme !== undefined && !allowedThemes.includes(cleanTheme)) {
-            return res.status(400).json({ error: 'Invalid theme selected' });
-        }
-
-        // Validate country code
-        if (cleanCountry !== undefined && cleanCountry.length > 0) {
-            const allowedCountries = ['TR', 'US', 'GB', 'DE', 'FR', 'JP', 'KR', 'CN'];
-            if (!allowedCountries.includes(cleanCountry)) {
-                return res.status(400).json({ error: 'Invalid country selected' });
-            }
-        }
-
-        const result = await db.updateProfile(req.user.username, {
-            displayName: cleanDisplayName,
-            bio: cleanBio,
-            avatar: cleanAvatar,
-            country: cleanCountry,
-            theme: cleanTheme
-        });
-        
-        if (result.error) {
-            return res.status(400).json({ error: result.error });
-        }
-
-        res.json({ 
-            message: 'Profile updated successfully', 
-            user: result.data 
-        });
-    } catch (error) {
-        console.error('Profile update error:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// Oyuncu istatistikleri
-app.get('/api/profile/stats', authenticateToken, async (req, res) => {
-    const result = await db.getPlayerStats(req.user.username);
-    
-    if (result.error) {
-        return res.status(404).json({ error: result.error });
-    }
-
-    res.json({ stats: result.data });
-});
-
-// Oyuncu başarımları
-app.get('/api/achievements', authenticateToken, async (req, res) => {
-    const result = await db.getPlayerAchievements(req.user.username);
-    
-    if (result.error) {
-        return res.status(404).json({ error: result.error });
-    }
-
-    res.json({ achievements: result.data });
-});
 
 // --- REAL-TIME GAME SOCKET ---
 
@@ -504,7 +300,7 @@ io.on('connection', (socket) => {
     // 1. User Joins Game with JWT Token
     socket.on('join game', async (payload) => {
         const { token } = payload;
-        
+
         if (!token) {
             socket.emit('auth_error', 'Authentication token required');
             return;
@@ -521,10 +317,10 @@ io.on('connection', (socket) => {
         socket.currentUser = decoded.username;
         socket.userId = decoded.userId;
         socket.isAuthenticated = true;
-        
+
         // Update connected users count
         connectedUsers++;
-        
+
         console.log(`✅ User authenticated and joined: ${decoded.username} (${connectedUsers} users online)`);
         finalizeJoin(socket, decoded.username);
     });
@@ -537,72 +333,72 @@ io.on('connection', (socket) => {
                 socket.emit('auth_error', 'Database temporarily unavailable. Please try again later.');
                 return;
             }
-            
+
             // Sistem mesajını kaydet ve gönder
             try {
                 await db.saveChatMessage('System', `${username} connected to node.`);
-                socket.broadcast.emit('chat message', { 
-                    user: 'System', 
-                    text: `${username} connected to node.` 
+                socket.broadcast.emit('chat message', {
+                    user: 'System',
+                    text: `${username} connected to node.`
                 });
             } catch (chatError) {
                 console.error(`Failed to save connection message for ${username}:`, chatError.message);
                 // Continue without chat message - not critical
             }
-            
+
             // Kullanıcıya son chat mesajlarını gönder
             try {
                 const { data: chatHistory, error: chatError } = await db.getChatMessages(20); // Son 20 mesaj
                 if (chatError) {
                     console.error(`Failed to load chat history for ${username}:`, chatError);
                     // Send a default message instead
-                    socket.emit('chat message', { 
-                        user: 'System', 
+                    socket.emit('chat message', {
+                        user: 'System',
                         text: 'Welcome to CipherNode! Chat history temporarily unavailable.',
                         timestamp: new Date().toISOString()
                     });
                 } else if (chatHistory && chatHistory.length > 0) {
                     chatHistory.forEach(msg => {
-                        socket.emit('chat message', { 
-                            user: msg.username, 
+                        socket.emit('chat message', {
+                            user: msg.username,
                             text: msg.message,
-                            timestamp: msg.timestamp 
+                            timestamp: msg.timestamp
                         });
                     });
                 }
             } catch (chatError) {
                 console.error(`Critical chat error for ${username}:`, chatError.message);
                 // Send fallback message
-                socket.emit('chat message', { 
-                    user: 'System', 
+                socket.emit('chat message', {
+                    user: 'System',
                     text: 'Welcome to CipherNode!',
                     timestamp: new Date().toISOString()
                 });
             }
-            
+
             // Kullanıcıyı veritabanına ekle veya skoru getir
             const { data: existingPlayer, error: playerError } = await db.findPlayer(username);
-            
+
             if (playerError) {
                 console.error(`Failed to find player ${username}:`, playerError);
                 socket.emit('auth_error', 'Database error occurred');
                 return;
             }
-            
+
             if (existingPlayer) {
                 // Mevcut kullanıcının skorunu ve level'ını gönder
                 socket.emit('sync score', existingPlayer.score || 0);
                 socket.emit('sync level', existingPlayer.level || 1);
                 console.log(`🔄 Synced user ${username}: Score ${existingPlayer.score || 0}, Level ${existingPlayer.level || 1}`);
-                
+
                 // Enerji durumunu güncelle ve gönder
                 const energyResult = await db.getPlayerEnergy(username);
                 if (energyResult.error) {
                     console.error(`Failed to get energy for ${username}:`, energyResult.error);
-                    socket.emit('sync energy', { 
-                        energy: INITIAL_ENERGY, 
-                        energyAdded: 0, 
-                        nextEnergyIn: ENERGY_REGENERATION_MINUTES 
+                    socket.emit('sync energy', {
+                        energy: INITIAL_ENERGY,
+                        energyAdded: 0,
+                        nextEnergyIn: ENERGY_REGENERATION_MINUTES
                     });
                 } else if (energyResult.data) {
                     socket.emit('sync energy', energyResult.data);
@@ -611,14 +407,14 @@ io.on('connection', (socket) => {
                 // Bu durumda kullanıcı JWT ile authenticated ama database'de yok
                 // Bu normal bir durum değil, ama güvenlik için handle edelim
                 console.warn(`Authenticated user ${username} not found in database`);
-                socket.emit('sync energy', { 
-                    energy: INITIAL_ENERGY, 
-                    energyAdded: 0, 
-                    nextEnergyIn: ENERGY_REGENERATION_MINUTES 
+                socket.emit('sync energy', {
+                    energy: INITIAL_ENERGY,
+                    energyAdded: 0,
+                    nextEnergyIn: ENERGY_REGENERATION_MINUTES
                 });
                 socket.emit('sync level', 1); // Default level
             }
-            
+
             await updateLeaderboard();
         } catch (error) {
             console.error(`Error in finalizeJoin for ${username}:`, error.message);
@@ -628,109 +424,109 @@ io.on('connection', (socket) => {
 
     // 2. Chat System (Protected)
     socket.on('chat message', (msg) => {
-        if(!socket.currentUser || !socket.isAuthenticated) return; // Block unverified chat
-        
+        if (!socket.currentUser || !socket.isAuthenticated) return; // Block unverified chat
+
         // Validate and sanitize message
         if (typeof msg !== 'string') return;
         const cleanMsg = validator.sanitizeString(msg, 500);
         if (cleanMsg.length === 0 || cleanMsg.length > 500) return;
-        
+
         // Enhanced rate limiting for chat (per user basis)
         const now = Date.now();
         if (!socket.lastMessages) socket.lastMessages = [];
-        
+
         // Clean old messages (older than 10 seconds)
         socket.lastMessages = socket.lastMessages.filter(time => now - time < 10000);
-        
+
         // Progressive rate limiting based on user behavior
         const messageCount = socket.lastMessages.length;
         let maxMessages = 5; // Default: 5 messages per 10 seconds
-        
+
         // Reduce limit for users who consistently hit the limit
         if (socket.rateLimitViolations && socket.rateLimitViolations > 3) {
             maxMessages = 3; // Stricter limit for repeat offenders
         }
-        
+
         if (messageCount >= maxMessages) {
             if (!socket.rateLimitViolations) socket.rateLimitViolations = 0;
             socket.rateLimitViolations++;
-            
+
             const waitTime = Math.ceil((10000 - (now - socket.lastMessages[0])) / 1000);
-            socket.emit('chat message', { 
-                user: 'System', 
-                text: `Rate limit exceeded. Please wait ${waitTime} seconds before sending another message.` 
+            socket.emit('chat message', {
+                user: 'System',
+                text: `Rate limit exceeded. Please wait ${waitTime} seconds before sending another message.`
             });
             return;
         }
-        
+
         socket.lastMessages.push(now);
-        
+
         // Reset violation count on good behavior
         if (messageCount === 0 && socket.rateLimitViolations > 0) {
             socket.rateLimitViolations = Math.max(0, socket.rateLimitViolations - 1);
         }
-        
+
         // Mesajı database'e kaydet
         db.saveChatMessage(socket.currentUser, cleanMsg);
-        
+
         // Tüm kullanıcılara gönder
         io.emit('chat message', { user: socket.currentUser, text: cleanMsg });
     });
 
     // 3. Score Submission (Protected)
     socket.on('submit score', async (data) => {
-        if(!socket.currentUser || !socket.isAuthenticated) return; // Block hackers
-        
+        if (!socket.currentUser || !socket.isAuthenticated) return; // Block hackers
+
         try {
             const { score, level, gameTime, won } = data;
-            
+
             // Validate score and game time
             if (!validator.isValidScore(score)) {
                 console.warn(`Invalid score from ${socket.currentUser}: ${score}`);
                 return;
             }
-            
+
             if (!validator.isValidGameTime(gameTime)) {
                 console.warn(`Invalid game time from ${socket.currentUser}: ${gameTime}`);
                 return;
             }
-            
+
             if (typeof won !== 'boolean') {
                 console.warn(`Invalid won status from ${socket.currentUser}: ${won}`);
                 return;
             }
-            
+
             // Validate level
             if (!Number.isInteger(level) || level < 1 || level > 1000) {
                 console.warn(`Invalid level from ${socket.currentUser}: ${level}`);
                 return;
             }
-            
+
             // Anti-cheat: Check if score is reasonable for the time taken
             const maxScorePerSecond = 10; // Reasonable max score per second
             if (gameTime > 0 && score > (gameTime * maxScorePerSecond + 100)) {
                 console.warn(`Suspicious score from ${socket.currentUser}: ${score} in ${gameTime}s`);
                 return;
             }
-            
+
             // Rate limiting for score submission (max 1 per 5 seconds)
             const now = Date.now();
             if (socket.lastScoreSubmit && now - socket.lastScoreSubmit < 5000) {
                 return;
             }
             socket.lastScoreSubmit = now;
-            
+
             // Skoru ve level'ı güncelle
             await db.upsertPlayer(socket.currentUser, score, level);
-            
+
             // Oyun istatistiklerini güncelle
             const gameResult = await db.updateGameStats(socket.currentUser, gameTime, won);
-            
+
             // Yeni başarımlar varsa bildir
             if (gameResult.newAchievements && gameResult.newAchievements.length > 0) {
                 socket.emit('new achievements', gameResult.newAchievements);
             }
-            
+
             // Leaderboard'ı hemen güncelle (force update)
             await updateLeaderboard(true);
         } catch (err) {
@@ -740,25 +536,25 @@ io.on('connection', (socket) => {
 
     // 4. Energy Usage (Protected)
     socket.on('use energy', async (amount) => {
-        if(!socket.currentUser || !socket.isAuthenticated) return;
-        
+        if (!socket.currentUser || !socket.isAuthenticated) return;
+
         try {
             // Validate energy amount
             if (!Number.isInteger(amount) || amount <= 0 || amount > 100) {
                 console.warn(`Invalid energy amount from ${socket.currentUser}: ${amount}`);
                 return;
             }
-            
+
             // Only allow game energy cost
             if (amount !== GAME_ENERGY_COST) {
                 console.warn(`Unauthorized energy usage from ${socket.currentUser}: ${amount}`);
                 return;
             }
-            
+
             const result = await db.updatePlayerEnergy(socket.currentUser, -amount);
             if (result.data) {
                 socket.emit('sync energy', result.data);
-                
+
                 // Eğer enerji yetersizse hata gönder
                 if (result.data.energy < GAME_ENERGY_COST) {
                     socket.emit('energy error', 'Insufficient energy');
@@ -771,8 +567,8 @@ io.on('connection', (socket) => {
 
     // 5. Energy Check (Protected)
     socket.on('check energy', async () => {
-        if(!socket.currentUser || !socket.isAuthenticated) return;
-        
+        if (!socket.currentUser || !socket.isAuthenticated) return;
+
         try {
             const result = await db.getPlayerEnergy(socket.currentUser);
             if (result.data) {
@@ -785,8 +581,8 @@ io.on('connection', (socket) => {
 
     // 6. Manual Leaderboard Refresh (Debug)
     socket.on('request leaderboard update', async () => {
-        if(!socket.currentUser || !socket.isAuthenticated) return;
-        
+        if (!socket.currentUser || !socket.isAuthenticated) return;
+
         console.log(`Manual leaderboard refresh requested by ${socket.currentUser}`);
         await updateLeaderboard(true); // Force update
     });
@@ -794,7 +590,7 @@ io.on('connection', (socket) => {
     // 6.1. Manual User Data Sync
     socket.on('request user sync', async (payload) => {
         const { token } = payload;
-        
+
         if (!token) return;
 
         // JWT token doğrulama
@@ -804,14 +600,14 @@ io.on('connection', (socket) => {
         try {
             // Fresh user data from database
             const { data: existingPlayer, error: playerError } = await db.findPlayer(decoded.username);
-            
+
             if (!playerError && existingPlayer) {
                 // Send fresh data to client
                 socket.emit('sync score', existingPlayer.score || 0);
                 socket.emit('sync level', existingPlayer.level || 1);
-                
+
                 console.log(`🔄 Manual sync for ${decoded.username}: Score ${existingPlayer.score || 0}, Level ${existingPlayer.level || 1}`);
-                
+
                 // Also refresh energy
                 const energyResult = await db.getPlayerEnergy(decoded.username);
                 if (!energyResult.error && energyResult.data) {
@@ -824,24 +620,24 @@ io.on('connection', (socket) => {
     });
 
     // 7. Disconnect - Memory leak prevention
-    socket.on('disconnect', () => { 
-        if(socket.currentUser) {
+    socket.on('disconnect', () => {
+        if (socket.currentUser) {
             console.log(`${socket.currentUser} disconnected`);
-            
+
             // Update connected users count
             connectedUsers = Math.max(0, connectedUsers - 1);
-            
+
             // Cleanup timers and intervals to prevent memory leaks
             if (socket.energyTimer) {
                 clearInterval(socket.energyTimer);
                 socket.energyTimer = null;
             }
-            
+
             // Clear rate limiting arrays
             if (socket.lastMessages) {
                 socket.lastMessages = null;
             }
-            
+
             // Clear user data
             socket.currentUser = null;
             socket.userId = null;
@@ -853,7 +649,7 @@ io.on('connection', (socket) => {
     let leaderboardCache = null;
     let lastLeaderboardUpdate = 0;
     let connectedUsers = 0;
-    
+
     // Adaptive cache duration based on activity
     function getLeaderboardCacheDuration() {
         if (connectedUsers > 10) return 15000; // 15 seconds for high activity
@@ -865,13 +661,13 @@ io.on('connection', (socket) => {
         try {
             const now = Date.now();
             const cacheDuration = getLeaderboardCacheDuration();
-            
+
             // Use cache if available and not expired
             if (!forceUpdate && leaderboardCache && (now - lastLeaderboardUpdate) < cacheDuration) {
                 io.emit('update leaderboard', leaderboardCache);
                 return;
             }
-            
+
             const { data, error } = await db.getLeaderboard(10);
             if (error) {
                 console.error('Failed to update leaderboard:', error);
@@ -881,7 +677,7 @@ io.on('connection', (socket) => {
                 }
                 return;
             }
-            
+
             if (data) {
                 leaderboardCache = data;
                 lastLeaderboardUpdate = now;
@@ -902,7 +698,7 @@ const energyRegenerationInterval = setInterval(async () => {
     try {
         // Her dakika tüm aktif oyuncuları kontrol et ve enerji durumlarını güncelle
         const connectedSockets = await io.fetchSockets();
-        
+
         for (const socket of connectedSockets) {
             if (socket.currentUser && socket.isAuthenticated) {
                 try {
@@ -912,9 +708,9 @@ const energyRegenerationInterval = setInterval(async () => {
                         socket.emit('sync energy', result.data);
                         const energyMsg = `Energy regenerated! +${result.data.energyAdded} energy`;
                         await db.saveChatMessage('System', energyMsg);
-                        socket.emit('chat message', { 
-                            user: 'System', 
-                            text: energyMsg 
+                        socket.emit('chat message', {
+                            user: 'System',
+                            text: energyMsg
                         });
                     }
                 } catch (err) {
@@ -951,15 +747,15 @@ process.on('SIGINT', () => {
 });
 
 server.listen(PORT, () => {
-  console.log(`🚀 CipherNode Server running on http://localhost:${PORT}`);
-  console.log(`🌍 Environment: ${NODE_ENV}`);
-  console.log(`⚡ Energy regeneration: 1 energy per ${ENERGY_REGENERATION_MINUTES} minutes`);
-  console.log(`🛡️  Rate limiting: ${process.env.RATE_LIMIT_MAX_REQUESTS || 100} requests per ${(parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000)/60000} minutes`);
-  console.log(`🎮 Game settings: ${GAME_ENERGY_COST} energy per game, max ${MAX_ENERGY} energy`);
-  
-  // Memory usage monitoring
-  const memUsage = process.memoryUsage();
-  console.log(`💾 Memory usage: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB / ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`);
+    console.log(`🚀 CipherNode Server running on http://localhost:${PORT}`);
+    console.log(`🌍 Environment: ${NODE_ENV}`);
+    console.log(`⚡ Energy regeneration: 1 energy per ${ENERGY_REGENERATION_MINUTES} minutes`);
+    console.log(`🛡️  Rate limiting: ${process.env.RATE_LIMIT_MAX_REQUESTS || 100} requests per ${(parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000) / 60000} minutes`);
+    console.log(`🎮 Game settings: ${GAME_ENERGY_COST} energy per game, max ${MAX_ENERGY} energy`);
+
+    // Memory usage monitoring
+    const memUsage = process.memoryUsage();
+    console.log(`💾 Memory usage: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB / ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`);
 });
 
 // Memory monitoring interval (every 5 minutes)
@@ -968,9 +764,9 @@ if (NODE_ENV === 'production') {
         const memUsage = process.memoryUsage();
         const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
         const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
-        
+
         console.log(`💾 Memory: ${heapUsedMB}MB / ${heapTotalMB}MB`);
-        
+
         // Warning if memory usage is high
         if (heapUsedMB > 200) {
             console.warn(`⚠️  High memory usage detected: ${heapUsedMB}MB`);
