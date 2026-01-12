@@ -2060,6 +2060,7 @@
                 <div class="stats">LVL: <span id="level-display">1</span> | PTS: <span id="score-display">0</span></div>
                 <button onclick="openProfile()" class="header-sidebar-btn">👤</button>
                 <button onclick="toggleSidebar()" class="header-sidebar-btn">💬</button>
+                <button onclick="toggleMute()" class="header-sidebar-btn" id="mute-btn" title="Toggle Sound">🔊</button>
                 <button onclick="refreshLeaderboard()" class="header-sidebar-btn"
                     title="Refresh Leaderboard">🔄</button>
                 <button onclick="handleLogout()" class="logout-btn">LOGOUT</button>
@@ -2276,9 +2277,36 @@
         </div>
     </div>
 
+    </div>
+
+    <script src="js/sound-manager.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
+
+        // --- SOUND MANAGER INTEGRATION ---
+        function toggleMute() {
+            if (window.soundManager) {
+                const isMuted = window.soundManager.toggleMute();
+                document.getElementById('mute-btn').innerText = isMuted ? '🔇' : '🔊';
+            }
+        }
+
+        // Add hover sounds to all buttons
+        document.addEventListener('DOMContentLoaded', () => {
+            // Update mute button state on load
+            if (window.soundManager) {
+                const isMuted = localStorage.getItem('ciphernode_muted') === 'true';
+                document.getElementById('mute-btn').innerText = isMuted ? '🔇' : '🔊';
+            }
+
+            // Button hovers
+            document.body.addEventListener('mouseover', (e) => {
+                if (e.target.tagName === 'BUTTON' || e.target.classList.contains('sidebar-tab') || e.target.classList.contains('profile-tab')) {
+                    if (window.soundManager) window.soundManager.playHover();
+                }
+            });
+        });
 
         // --- PWA SERVICE WORKER REGISTRATION ---
         if ('serviceWorker' in navigator) {
@@ -3064,6 +3092,7 @@
                 document.getElementById('timer').innerText = "0";
                 document.getElementById('start-btn').style.display = 'none';
 
+                if (window.soundManager) window.soundManager.playGameStart();
                 generateLevel();
 
                 // Clear any existing timer
@@ -3137,7 +3166,13 @@
                 showNotification('Failed to generate level. Please try again.', 'error');
             }
         }
-        function handleMove(r, c) { if (isPlaying) { toggleCell(r, c); if (gridState.every(row => row.every(v => v))) endGame(); } }
+        function handleMove(r, c) {
+            if (isPlaying) {
+                if (window.soundManager) window.soundManager.playClick();
+                toggleCell(r, c);
+                if (gridState.every(row => row.every(v => v))) endGame();
+            }
+        }
         function toggleCell(r, c) {
             [[0, 0], [0, 1], [0, -1], [1, 0], [-1, 0]].forEach(([dr, dc]) => {
                 let nr = r + dr, nc = c + dc; if (nr >= 0 && nr < gridSize && nc >= 0 && nc < gridSize) {
@@ -3179,6 +3214,8 @@
                 if (secondsElapsed < 30) {
                     showNotification('Speed Demon! Completed in under 30 seconds!', 'success');
                 }
+
+                if (window.soundManager) window.soundManager.playSuccess();
 
             } catch (error) {
                 console.error('Error ending game:', error);
