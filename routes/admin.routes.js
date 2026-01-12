@@ -81,12 +81,40 @@ export default function adminRoutes(authenticateToken) {
         res.json({ message: 'User deleted successfully' });
     });
 
+    // POST /admin/users/:id/role - Update User Role (Superadmin Only)
+    router.post('/users/:id/role', async (req, res) => {
+        // Double check superadmin status (extra layer)
+        if (req.user.role !== 'superadmin') {
+            return res.status(403).json({ error: 'Only Superadmin can change roles.' });
+        }
+
+        const userId = req.params.id;
+        const { role } = req.body;
+
+        // Prevent changing your own role
+        if (userId === req.user.userId) {
+            return res.status(400).json({ error: 'You cannot change your own role.' });
+        }
+
+        const result = await req.db.updateUserRole(userId, role);
+        if (result.error) {
+            return res.status(500).json({ error: result.error });
+        }
+        res.json({ message: `User role updated to ${role}` });
+    });
+
     // POST /admin/chat/clear - Clear Chat
     router.post('/chat/clear', async (req, res) => {
         const result = await req.db.clearChatMessages();
         if (result.error) {
             return res.status(500).json({ error: result.error });
         }
+
+        // Emit event to all connected clients to clear their UI
+        if (req.io) {
+            req.io.emit('chat cleared');
+        }
+
         res.json({ message: 'Chat history cleared' });
     });
 

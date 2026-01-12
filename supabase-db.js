@@ -143,7 +143,11 @@ class SupabaseDB {
                     userId: user.id,
                     username: user.username,
                     email: user.email,
-                    isAdmin: user.is_admin || false
+                    userId: user.id,
+                    username: user.username,
+                    email: user.email,
+                    isAdmin: user.role === 'admin' || user.role === 'superadmin' || user.is_admin === true,
+                    role: user.role || (user.is_admin ? 'admin' : 'user')
                 },
                 this.jwtSecret,
                 { expiresIn: this.jwtExpiresIn }
@@ -790,7 +794,7 @@ class SupabaseDB {
         try {
             let query = this.supabase
                 .from('users')
-                .select('id, username, email, is_admin, banned, score, level, created_at, last_played', { count: 'exact' });
+                .select('id, username, email, role, banned, score, level, created_at, last_played', { count: 'exact' });
 
             if (search) {
                 query = query.or(`username.ilike.%${search}%,email.ilike.%${search}%`);
@@ -802,6 +806,14 @@ class SupabaseDB {
             const { data, error, count } = await query
                 .order('created_at', { ascending: false })
                 .range(from, to);
+
+            // Backwards compatibility layer for transition period
+            if (data) {
+                data.forEach(user => {
+                    if (!user.role && user.is_admin) user.role = 'admin';
+                    if (!user.role) user.role = 'user';
+                });
+            }
 
             if (error) throw error;
             return { data: { users: data, total: count }, error: null };
@@ -838,6 +850,26 @@ class SupabaseDB {
         } catch (error) {
             console.error('Delete user error:', error);
             return { data: null, error: 'Failed to delete user' };
+        }
+    }
+
+    async updateUserRole(userId, newRole) {
+        try {
+            const validRoles = ['user', 'admin', 'superadmin'];
+            if (!validRoles.includes(newRole)) {
+                return { data: null, error: 'Invalid role' };
+            }
+
+            const { error } = await this.supabase
+                .from('users')
+                .update({ role: newRole })
+                .eq('id', userId);
+
+            if (error) throw error;
+            return { data: true, error: null };
+        } catch (error) {
+            console.error('Update role error:', error);
+            return { data: null, error: 'Failed to update user role' };
         }
     }
 

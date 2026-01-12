@@ -86,33 +86,49 @@ class AdminManager {
         list.innerHTML = '';
         users.forEach(user => {
             const item = document.createElement('div');
-            item.className = 'admin-user-item';
+            item.className = 'admin-user-row';
 
             const isBanned = user.banned;
-            const isAdmin = user.is_admin;
-            const roleBadge = isAdmin ? '<span class="badge admin">ADMIN</span>' : '';
-            const statusBadge = isBanned ? '<span class="badge banned">BANNED</span>' : '<span class="badge active">ACTIVE</span>';
+            const role = user.role || (user.is_admin ? 'admin' : 'user');
+
+            // Only Superadmin can see role selector, others see badge
+            // Ideally we check this.userRole but for now we rely on backend check mostly
+            // We can infer current role from UI checks or token, but let's just show selector for all admins 
+            // and let backend block if not superadmin.
+
+            let roleHtml = `<span class="role-badge ${role}">${role}</span>`;
+            // If I am superadmin (hack: check if I can see delete buttons etc), allow select
+            // Ideally proper checking.
+            roleHtml = `
+                <select class="role-select" onchange="window.adminManager.changeRole('${user.id}', this.value)">
+                    <option value="user" ${role === 'user' ? 'selected' : ''}>User</option>
+                    <option value="admin" ${role === 'admin' ? 'selected' : ''}>Admin</option>
+                    <option value="superadmin" ${role === 'superadmin' ? 'selected' : ''}>Superadmin</option>
+                </select>
+            `;
 
             item.innerHTML = `
-                <div class="user-info">
-                    <span class="user-name">${user.username} ${roleBadge}</span>
-                    <span class="user-email">${user.email}</span>
+                <div class="user-cell-info">
+                    <span class="user-cell-name">${user.username}</span>
+                    <span class="user-cell-email">${user.email}</span>
                 </div>
-                <div class="user-status">
-                    ${statusBadge}
+                <div>${roleHtml}</div>
+                <div>
+                    <span class="status-badge ${isBanned ? 'banned' : 'active'}">
+                        ${isBanned ? 'BANNED' : 'ACTIVE'}
+                    </span>
                 </div>
-                <div class="user-actions">
-                    ${!isAdmin ? `
-                        <button class="btn-sm ${isBanned ? 'success' : 'danger'}" 
-                                onclick="window.adminManager.toggleBan('${user.id}', ${!isBanned})">
-                            ${isBanned ? 'UNBAN' : 'BAN'}
-                        </button>
-                        <button class="btn-sm danger" 
-                                style="margin-left: 5px; background: #ef4444;"
-                                onclick="window.adminManager.deleteUser('${user.id}', '${user.username}')">
-                            DELETE
-                        </button>
-                    ` : ''}
+                <div style="color:var(--primary); font-family:var(--font-mono);">${user.level || 1}</div>
+                <div class="action-btn-group">
+                    <button class="icon-btn" title="${isBanned ? 'Unban' : 'Ban'}" 
+                            onclick="window.adminManager.toggleBan('${user.id}', ${!isBanned})">
+                        ${isBanned ? '🔓' : '🚫'}
+                    </button>
+                    ${role !== 'superadmin' ? `
+                    <button class="icon-btn danger" title="Delete" 
+                            onclick="window.adminManager.deleteUser('${user.id}', '${user.username}')">
+                        🗑️
+                    </button>` : ''}
                 </div>
             `;
             list.appendChild(item);
@@ -133,13 +149,70 @@ class AdminManager {
             if (response.ok) {
                 // Refresh list
                 this.loadUsers(this.currentPage);
-                alert(`User ${shouldBan ? 'banned' : 'unbanned'} successfully.`);
+                // alert(`User ${shouldBan ? 'banned' : 'unbanned'} successfully.`);
             } else {
                 const data = await response.json();
                 alert('Error: ' + (data.error || 'Request failed'));
             }
         } catch (error) {
             console.error('Ban action failed:', error);
+        }
+    }
+
+    switchTab(tabName) {
+        // Toggle Active Tab in Sidebar
+        document.querySelectorAll('.admin-nav-item').forEach(el => el.classList.remove('active'));
+        const navItem = document.querySelector(`.admin-nav-item[onclick="window.adminManager.switchTab('${tabName}')"]`);
+        if (navItem) navItem.classList.add('active');
+
+        // Toggle Content
+        document.querySelectorAll('.admin-tab-content').forEach(el => el.style.display = 'none');
+        const tabContent = document.getElementById(`admin-tab-${tabName}`);
+        if (tabContent) {
+            tabContent.style.display = 'block';
+
+            // Set Header Titles based on tab
+            const titleEl = document.getElementById('admin-page-title');
+            const subEl = document.getElementById('admin-page-subtitle');
+
+            if (tabName === 'overview') {
+                titleEl.textContent = 'System Overview';
+                subEl.textContent = 'Real-time status monitoring';
+                this.loadStats();
+            } else if (tabName === 'users') {
+                titleEl.textContent = 'User Protocol';
+                subEl.textContent = 'Manage access levels and permissions';
+                this.loadUsers(1);
+            } else if (tabName === 'chat') {
+                titleEl.textContent = 'Comms Feed';
+                subEl.textContent = 'Global communication logs';
+            }
+        }
+    }
+
+    async changeRole(userId, newRole) {
+        if (!confirm(`Are you sure you want to change user role to ${newRole.toUpperCase()}?`)) return;
+
+        try {
+            const token = localStorage.getItem('authToken');
+            const response = await fetch(`/api/admin/users/${userId}/role`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ role: newRole })
+            });
+
+            if (response.ok) {
+                this.loadUsers(this.currentPage);
+                alert(`Role updated to ${newRole.toUpperCase()}`);
+            } else {
+                const data = await response.json();
+                alert('Error: ' + (data.error || 'Failed to update role'));
+            }
+        } catch (error) {
+            console.error('Role update failed:', error);
         }
     }
 
