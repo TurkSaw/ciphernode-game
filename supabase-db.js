@@ -186,9 +186,13 @@ class SupabaseDB {
                 })
                 .eq('username', username)
                 .select()
-                .single();
+                .maybeSingle();
 
             if (error) throw error;
+            if (!user) {
+                console.warn(`UpsertPlayer: User '${username}' not found.`);
+                return { data: null, error: 'User not found' };
+            }
 
             const { password, ...userData } = user;
             return { data: userData, error: null };
@@ -261,11 +265,9 @@ class SupabaseDB {
                 .from('users')
                 .select('*')
                 .eq('username', username)
-                .single();
+                .maybeSingle();
 
-            if (error && error.code !== 'PGRST116') { // PGRST116 = not found
-                throw error;
-            }
+            if (error) throw error;
 
             if (user) {
                 const { password, ...userData } = user;
@@ -332,9 +334,10 @@ class SupabaseDB {
                 .update(updateData)
                 .eq('username', username)
                 .select()
-                .single();
+                .maybeSingle();
 
             if (error) throw error;
+            if (!user) return { data: null, error: 'User not found' };
 
             const { password, ...userData } = user;
             return { data: userData, error: null };
@@ -387,9 +390,10 @@ class SupabaseDB {
                 .from('users')
                 .select('id, total_games, total_play_time, current_streak, max_streak, best_time')
                 .eq('username', username)
-                .single();
+                .maybeSingle();
 
             if (userError) throw userError;
+            if (!user) return { data: null, error: 'User not found' };
 
             // Calculate new stats
             const newTotalGames = (user.total_games || 0) + 1;
@@ -412,9 +416,10 @@ class SupabaseDB {
                 })
                 .eq('id', user.id)
                 .select()
-                .single();
+                .maybeSingle();
 
             if (updateError) throw updateError;
+            if (!updatedUser) return { data: null, error: 'User update failed' };
 
             // Insert game session record
             await this.supabase
@@ -448,9 +453,10 @@ class SupabaseDB {
                 .from('users')
                 .select('id, total_games, score, best_time, current_streak, total_play_time')
                 .eq('id', userId)
-                .single();
+                .maybeSingle();
 
             if (userError) throw userError;
+            if (!user) return []; // User not found
 
             // 2. Get all achievements and user's unlocked achievements
             const { data: allAchievements, error: achError } = await this.supabase
@@ -496,9 +502,10 @@ class SupabaseDB {
                 .from('users')
                 .select('id, total_games, score, best_time, current_streak, total_play_time')
                 .eq('username', username)
-                .single();
+                .maybeSingle();
 
             if (userError) throw userError;
+            if (!user) return { data: null, error: 'User not found' };
 
             // Get all achievements
             const { data: allAchievements, error: achievementsError } = await this.supabase
@@ -594,7 +601,7 @@ class SupabaseDB {
                     achievement_id: achievementId
                 })
                 .select() // Prevent returning nothing error if needed
-                .single();
+                .maybeSingle();
         } catch (error) {
             // Ignore duplicate key errors (already unlocked)
             if (error.code !== '23505') {
