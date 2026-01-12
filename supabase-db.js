@@ -132,12 +132,18 @@ class SupabaseDB {
                 return { data: null, error: 'Invalid email or password' };
             }
 
+            // Check if banned
+            if (user.banned) {
+                return { data: null, error: 'Account is banned' };
+            }
+
             // Generate JWT token
             const token = jwt.sign(
                 {
                     userId: user.id,
                     username: user.username,
-                    email: user.email
+                    email: user.email,
+                    isAdmin: user.is_admin || false
                 },
                 this.jwtSecret,
                 { expiresIn: this.jwtExpiresIn }
@@ -775,6 +781,73 @@ class SupabaseDB {
         } catch (error) {
             console.error('Clear chat messages error:', error);
             return { data: false, error: 'Failed to clear messages' };
+        }
+    }
+
+    // --- Admin Methods ---
+
+    async getAllUsers(page = 1, limit = 20, search = '') {
+        try {
+            let query = this.supabase
+                .from('users')
+                .select('id, username, email, is_admin, banned, score, level, created_at, last_played', { count: 'exact' });
+
+            if (search) {
+                query = query.or(`username.ilike.%${search}%,email.ilike.%${search}%`);
+            }
+
+            const from = (page - 1) * limit;
+            const to = from + limit - 1;
+
+            const { data, error, count } = await query
+                .order('created_at', { ascending: false })
+                .range(from, to);
+
+            if (error) throw error;
+            return { data: { users: data, total: count }, error: null };
+        } catch (error) {
+            console.error('Get all users error:', error);
+            return { data: null, error: 'Failed to fetch users' };
+        }
+    }
+
+    async toggleBanUser(userId, banStatus) {
+        try {
+            const { error } = await this.supabase
+                .from('users')
+                .update({ banned: banStatus })
+                .eq('id', userId);
+
+            if (error) throw error;
+            return { data: true, error: null };
+        } catch (error) {
+            console.error('Ban user error:', error);
+            return { data: null, error: 'Failed to update user ban status' };
+        }
+    }
+
+    async getSystemStats() {
+        try {
+            const { count: userCount, error: userError } = await this.supabase
+                .from('users')
+                .select('*', { count: 'exact', head: true });
+
+            const { count: gameCount, error: gameError } = await this.supabase
+                .from('game_sessions')
+                .select('*', { count: 'exact', head: true });
+
+            if (userError || gameError) throw new Error('Stats fetch failed');
+
+            return {
+                data: {
+                    totalUsers: userCount,
+                    totalGames: gameCount
+                },
+                error: null
+            };
+        } catch (error) {
+            console.error('System stats error:', error);
+            return { data: null, error: 'Failed to get system stats' };
         }
     }
 }

@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
+import adminRoutes from './routes/admin.routes.js';
 import validator from './utils/validator.js';
 
 // ES modules __dirname equivalent
@@ -289,6 +290,7 @@ function authenticateToken(req, res, next) {
 // --- AUTH ROUTES ---
 app.use('/api', authRoutes());
 app.use('/api', userRoutes(authenticateToken));
+app.use('/api/admin', adminRoutes(authenticateToken));
 
 
 // --- REAL-TIME GAME SOCKET ---
