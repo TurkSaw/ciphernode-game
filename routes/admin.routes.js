@@ -57,7 +57,6 @@ export default function adminRoutes(authenticateToken) {
         res.json({ message: 'User banned successfully' });
     });
 
-    // POST /admin/users/:id/unban - Unban User
     router.post('/users/:id/unban', async (req, res) => {
         const userId = req.params.id;
         const result = await req.db.toggleBanUser(userId, false);
@@ -65,6 +64,21 @@ export default function adminRoutes(authenticateToken) {
             return res.status(500).json({ error: result.error });
         }
         res.json({ message: 'User unbanned successfully' });
+    });
+
+    // DELETE /admin/users/:id - Delete User
+    router.delete('/users/:id', async (req, res) => {
+        const userId = req.params.id;
+        // Prevent deleting yourself
+        if (userId === req.user.userId) {
+            return res.status(400).json({ error: 'You cannot delete yourself.' });
+        }
+
+        const result = await req.db.deleteUser(userId);
+        if (result.error) {
+            return res.status(500).json({ error: result.error });
+        }
+        res.json({ message: 'User deleted successfully' });
     });
 
     // POST /admin/chat/clear - Clear Chat

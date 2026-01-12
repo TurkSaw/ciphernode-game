@@ -107,6 +107,11 @@ class AdminManager {
                                 onclick="window.adminManager.toggleBan('${user.id}', ${!isBanned})">
                             ${isBanned ? 'UNBAN' : 'BAN'}
                         </button>
+                        <button class="btn-sm danger" 
+                                style="margin-left: 5px; background: #ef4444;"
+                                onclick="window.adminManager.deleteUser('${user.id}', '${user.username}')">
+                            DELETE
+                        </button>
                     ` : ''}
                 </div>
             `;
@@ -135,6 +140,31 @@ class AdminManager {
             }
         } catch (error) {
             console.error('Ban action failed:', error);
+        }
+    }
+
+    async deleteUser(userId, username) {
+        if (!confirm(`⚠️ DANGER: Are you sure you want to PERMANENTLY DELETE user '${username}'?\n\nThis action cannot be undone!`)) return;
+
+        // Double confirmation for safety
+        if (!confirm(`Last warning: This will completely erase '${username}' and all their progress.\n\nProceed with deletion?`)) return;
+
+        try {
+            const token = localStorage.getItem('authToken');
+            const response = await fetch(`/api/admin/users/${userId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (response.ok) {
+                this.loadUsers(this.currentPage);
+                alert(`User '${username}' deleted successfully.`);
+            } else {
+                const data = await response.json();
+                alert('Error: ' + (data.error || 'Failed to delete user'));
+            }
+        } catch (error) {
+            console.error('Delete action failed:', error);
         }
     }
 

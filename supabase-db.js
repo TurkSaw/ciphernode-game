@@ -826,6 +826,21 @@ class SupabaseDB {
         }
     }
 
+    async deleteUser(userId) {
+        try {
+            const { error } = await this.supabase
+                .from('users')
+                .delete()
+                .eq('id', userId);
+
+            if (error) throw error;
+            return { data: true, error: null };
+        } catch (error) {
+            console.error('Delete user error:', error);
+            return { data: null, error: 'Failed to delete user' };
+        }
+    }
+
     async getSystemStats() {
         try {
             const { count: userCount, error: userError } = await this.supabase
