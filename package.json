@@ -15,7 +15,13 @@
     "create-icons": "node create-icons.js",
     "pwa-audit": "echo 'Open Chrome DevTools > Lighthouse > PWA audit to test PWA features'",
     "test-offline": "echo 'Open DevTools > Network > Offline to test offline functionality'",
-    "build": "echo 'No build step required for Node.js app'"
+    "build": "echo 'No build step required for Node.js app'",
+    "test": "node tests/quick-test.js",
+    "test:unit": "node tests/unit/validation.test.js && node tests/unit/game-logic.test.js",
+    "test:integration": "node tests/integration/api.test.js",
+    "test:e2e": "node tests/e2e/user-flow.test.js",
+    "test:watch": "echo 'Test watch mode not available with simple runner'",
+    "test:verbose": "echo 'Run individual test files with: node tests/unit/validation.test.js'"
   },
   "keywords": [
     "game",
