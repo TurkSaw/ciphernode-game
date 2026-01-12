@@ -1,5 +1,6 @@
 import express from 'express';
 import validator from '../utils/validator.js';
+import { sendEmail, emailTemplates } from '../utils/emailService.js';
 
 export default function authRoutes() {
     const router = express.Router();
@@ -90,6 +91,60 @@ export default function authRoutes() {
             });
         } catch (error) {
             console.error('Login error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    });
+
+
+    // Forgot Password
+    router.post('/forgot-password', async (req, res) => {
+        try {
+            const { email } = req.body;
+            if (!email) return res.status(400).json({ error: 'Email is required' });
+
+            // Generate token
+            const { data, error } = await req.db.createPasswordResetToken(email);
+
+            if (error) {
+                // Return 200 even on error to prevent enumeration (if logic dictates)
+                // But for now we trust createPasswordResetToken to return safe success
+                return res.status(200).json({ message: 'If that email exists, a reset link has been sent.' });
+            }
+
+            if (data && data.token) {
+                // Send email
+                const resetLink = `${req.protocol}://${req.get('host')}/?reset_token=${data.token}`;
+                const emailHtml = emailTemplates.passwordReset(resetLink);
+
+                await sendEmail(email, 'Password Reset Request', emailHtml);
+            }
+
+            res.json({ message: 'If that email exists, a reset link has been sent.' });
+
+        } catch (error) {
+            console.error('Forgot password route error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    });
+
+    // Reset Password
+    router.post('/reset-password', async (req, res) => {
+        try {
+            const { token, newPassword } = req.body;
+            if (!token || !newPassword) {
+                return res.status(400).json({ error: 'Token and new password are required' });
+            }
+
+            const { data, error } = await req.db.resetPasswordWithToken(token, newPassword);
+
+            if (error) {
+                return res.status(400).json({ error });
+            }
+
+            res.json({ message: 'Password reset successful. You can now login.' });
+
+        } catch (error) {
+            console.error('Reset password route error:', error);
             res.status(500).json({ error: 'Internal server error' });
         }
     });

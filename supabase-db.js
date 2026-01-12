@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
 class SupabaseDB {
     constructor() {
@@ -161,6 +162,101 @@ class SupabaseDB {
         } catch (error) {
             console.error('Login error:', error);
             return { data: null, error: 'Login failed' };
+        }
+    }
+
+    // Şifre sıfırlama tokeni oluştur
+    async createPasswordResetToken(email) {
+        try {
+            // Find user
+            const { data: user, error } = await this.supabase
+                .from('users')
+                .select('id, username')
+                .eq('email', email.toLowerCase())
+                .maybeSingle();
+
+            if (error || !user) {
+                // Return generic success to prevent email enumeration
+                return { data: true, error: null };
+            }
+
+            // Generate random token
+            const resetToken = crypto.randomBytes(32).toString('hex');
+            const hashedToken = crypto
+                .createHash('sha256')
+                .update(resetToken)
+                .digest('hex');
+
+            // Set expiration (1 hour)
+            const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+            // Save to DB
+            const { error: updateError } = await this.supabase
+                .from('users')
+                .update({
+                    reset_token: hashedToken,
+                    reset_token_expires: expires
+                })
+                .eq('id', user.id);
+
+            if (updateError) throw updateError;
+
+            return {
+                data: {
+                    token: resetToken,
+                    username: user.username
+                },
+                error: null
+            };
+
+        } catch (error) {
+            console.error('Create reset token error:', error);
+            return { data: null, error: 'Failed to create reset token' };
+        }
+    }
+
+    // Token ile şifre sıfırla
+    async resetPasswordWithToken(token, newPassword) {
+        try {
+            // Hash token to compare with DB
+            const hashedToken = crypto
+                .createHash('sha256')
+                .update(token)
+                .digest('hex');
+
+            // Find user with valid token
+            const { data: user, error } = await this.supabase
+                .from('users')
+                .select('id, username')
+                .eq('reset_token', hashedToken)
+                .gt('reset_token_expires', new Date().toISOString())
+                .maybeSingle();
+
+            if (error || !user) {
+                return { data: null, error: 'Invalid or expired token' };
+            }
+
+            // Hash new password
+            const hashedPassword = await bcrypt.hash(newPassword, this.bcryptRounds);
+
+            // Update user (clear token)
+            const { error: updateError } = await this.supabase
+                .from('users')
+                .update({
+                    password: hashedPassword,
+                    reset_token: null,
+                    reset_token_expires: null,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', user.id);
+
+            if (updateError) throw updateError;
+
+            return { data: true, error: null };
+
+        } catch (error) {
+            console.error('Reset password error:', error);
+            return { data: null, error: 'Failed to reset password' };
         }
     }
 

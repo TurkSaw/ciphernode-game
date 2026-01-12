@@ -1996,6 +1996,35 @@
             <button class="auth-btn" onclick="handleLogin()">Connect</button>
             <div class="back-link" onclick="showScreen('main-menu')">Back to Menu</div>
             <div id="login-error" class="error-msg"></div>
+            <div style="margin-top:15px; font-size:12px; cursor:pointer; color:var(--primary); text-decoration:underline;"
+                onclick="showScreen('forgot-password-screen')">Forgot Password?</div>
+        </div>
+
+        <!-- 4. FORGOT PASSWORD SCREEN -->
+        <div id="forgot-password-screen" class="auth-box">
+            <div class="auth-title">Reset Access</div>
+            <p style="color:var(--text-secondary); font-size:14px; margin-bottom:20px; text-align:center;">
+                Enter your node email identifier to receive a reset link.
+            </p>
+            <div class="input-group">
+                <span class="input-label">EMAIL</span>
+                <input type="email" id="forgot-email">
+            </div>
+            <button class="auth-btn" onclick="handleForgotPassword()">Send Reset Link</button>
+            <div class="back-link" onclick="showScreen('login-screen')">Back to Login</div>
+            <div id="forgot-msg" class="error-msg" style="color:var(--success)"></div>
+        </div>
+
+        <!-- 5. RESET PASSWORD SCREEN -->
+        <div id="reset-password-screen" class="auth-box">
+            <div class="auth-title">New Credentials</div>
+            <div class="input-group">
+                <span class="input-label">NEW PASSWORD</span>
+                <input type="password" id="reset-new-pass">
+            </div>
+            <button class="auth-btn" onclick="handleResetPassword()">Update Password</button>
+            <div class="back-link" onclick="showScreen('login-screen')">Back to Login</div>
+            <div id="reset-msg" class="error-msg"></div>
         </div>
 
         <!-- 3. REGISTER SCREEN -->
@@ -2489,8 +2518,94 @@
             document.querySelectorAll('#auth-overlay > div').forEach(d => d.style.display = 'none');
             document.getElementById(id).style.display = 'block';
             // Clear errors
-            document.querySelectorAll('.error-msg').forEach(e => e.style.display = 'none');
+            document.querySelectorAll('.error-msg').forEach(el => el.innerText = '');
         }
+
+        // --- PASSWORD RESET LOGIC ---
+
+        async function handleForgotPassword() {
+            const email = document.getElementById('forgot-email').value;
+            const errorEl = document.getElementById('forgot-msg');
+
+            if (!email) {
+                errorEl.style.color = 'var(--danger)';
+                errorEl.innerText = 'Please enter your email';
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await res.json();
+
+                // Show success message regardless of actual user existence (security)
+                errorEl.style.color = 'var(--success)';
+                errorEl.innerText = data.message || 'If that email exists, a reset link has been sent.';
+
+            } catch (error) {
+                errorEl.style.color = 'var(--danger)';
+                errorEl.innerText = 'Network error. Please try again.';
+            }
+        }
+
+        async function handleResetPassword() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('reset_token');
+            const newPassword = document.getElementById('reset-new-pass').value;
+            const errorEl = document.getElementById('reset-msg');
+
+            if (!token) {
+                errorEl.style.color = 'var(--danger)';
+                errorEl.innerText = 'Invalid reset link. Token missing.';
+                return;
+            }
+
+            if (!newPassword || newPassword.length < 6) {
+                errorEl.style.color = 'var(--danger)';
+                errorEl.innerText = 'Password must be at least 6 characters';
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, newPassword })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    errorEl.style.color = 'var(--success)';
+                    errorEl.innerText = 'Password updated! Redirecting to login...';
+                    setTimeout(() => {
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                        showScreen('login-screen');
+                    }, 2000);
+                } else {
+                    errorEl.style.color = 'var(--danger)';
+                    errorEl.innerText = data.error || 'Reset failed';
+                }
+
+            } catch (error) {
+                errorEl.style.color = 'var(--danger)';
+                errorEl.innerText = 'Network error. Please try again.';
+            }
+        }
+
+        // Check for Reset Token on Load
+        window.addEventListener('load', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const resetToken = urlParams.get('reset_token');
+
+            if (resetToken) {
+                showScreen('reset-password-screen');
+            }
+        });
 
         // --- GLOBAL ERROR HANDLING ---
         window.addEventListener('error', (event) => {
