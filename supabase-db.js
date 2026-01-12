@@ -440,11 +440,48 @@ class SupabaseDB {
     }
 
     // Basit başarım kontrolü
+    // Basit başarım kontrolü
     async checkAchievements(userId) {
         try {
-            // Şimdilik basit achievement sistemi
-            // Gelecekte daha detaylı achievement tablosu kullanılabilir
-            return [];
+            // 1. Get user stats
+            const { data: user, error: userError } = await this.supabase
+                .from('users')
+                .select('id, total_games, score, best_time, current_streak, total_play_time')
+                .eq('id', userId)
+                .single();
+
+            if (userError) throw userError;
+
+            // 2. Get all achievements and user's unlocked achievements
+            const { data: allAchievements, error: achError } = await this.supabase
+                .from('achievements')
+                .select('*');
+
+            if (achError) throw achError;
+
+            const { data: userAchievements, error: uaError } = await this.supabase
+                .from('user_achievements')
+                .select('achievement_id')
+                .eq('user_id', userId);
+
+            if (uaError) throw uaError;
+
+            const unlockedIds = new Set((userAchievements || []).map(ua => ua.achievement_id));
+            const newAchievements = [];
+
+            // 3. Check for new unlocks
+            for (const achievement of (allAchievements || [])) {
+                if (unlockedIds.has(achievement.id)) continue;
+
+                if (this.checkAchievementCondition(achievement, user)) {
+                    // Unlock!
+                    await this.unlockAchievement(userId, achievement.id);
+                    newAchievements.push(achievement);
+                }
+            }
+
+            return newAchievements;
+
         } catch (error) {
             console.error('Achievement check error:', error);
             return [];
@@ -535,7 +572,7 @@ class SupabaseDB {
             case 'score':
                 return (userStats.score || 0) >= achievement.condition_value;
             case 'best_time':
-                return userStats.best_time && userStats.best_time <= achievement.condition_value;
+                return !!(userStats.best_time && userStats.best_time <= achievement.condition_value);
             case 'current_streak':
                 return (userStats.current_streak || 0) >= achievement.condition_value;
             case 'total_play_time':
@@ -555,9 +592,14 @@ class SupabaseDB {
                 .insert({
                     user_id: userId,
                     achievement_id: achievementId
-                });
+                })
+                .select() // Prevent returning nothing error if needed
+                .single();
         } catch (error) {
-            console.error('Unlock achievement error:', error);
+            // Ignore duplicate key errors (already unlocked)
+            if (error.code !== '23505') {
+                console.error('Unlock achievement error:', error);
+            }
         }
     }
 
