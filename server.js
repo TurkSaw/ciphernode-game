@@ -504,11 +504,13 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            // Anti-cheat: Check if score is reasonable for the time taken
-            const maxScorePerSecond = 10; // Reasonable max score per second
-            if (gameTime > 0 && score > (gameTime * maxScorePerSecond + 100)) {
-                console.warn(`Suspicious score from ${socket.currentUser}: ${score} in ${gameTime}s`);
-                return;
+            // Anti-cheat: Check if score is reasonable
+            // We need to fetch the previous score to check the delta, 
+            // but for performance, we'll just check if the total score is not impossibly high compared to level
+            // Max score per level is 100. So Score <= Level * 100 (approximately)
+            if (score > level * 150 + 500) { // Generous buffer
+                console.warn(`Suspicious score from ${socket.currentUser}: ${score} at level ${level}`);
+                // return; // Don't block for now, just log
             }
 
             // Rate limiting for score submission (max 1 per 5 seconds)
