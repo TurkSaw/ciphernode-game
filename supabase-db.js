@@ -7,7 +7,7 @@ class SupabaseDB {
     constructor() {
         // Supabase configuration
         this.supabaseUrl = process.env.SUPABASE_URL;
-        this.supabaseKey = process.env.SUPABASE_ANON_KEY;
+        this.supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
 
         if (!this.supabaseUrl || !this.supabaseKey) {
             console.warn('⚠️  Supabase credentials not found, falling back to JSON database');
