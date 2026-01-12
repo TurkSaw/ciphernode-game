@@ -29,6 +29,44 @@ const transporter = createTransporter();
 // Send email function
 export const sendEmail = async (to, subject, html) => {
     try {
+        const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
+        const appName = process.env.APP_NAME || 'CipherNode';
+
+        // 1. Try Brevo API first (Port 443 - Bypasses Render Blocking)
+        // Brevo API Key must be set in env as BREVO_API_KEY (or use SMTP_PASS if it is an API key)
+        const apiKey = process.env.BREVO_API_KEY || process.env.SMTP_PASS;
+
+        if (apiKey && !apiKey.includes(' ')) { // Simple check if it looks like a key
+            try {
+                const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+                    method: 'POST',
+                    headers: {
+                        'accept': 'application/json',
+                        'api-key': apiKey,
+                        'content-type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        sender: { name: appName, email: fromEmail },
+                        to: [{ email: to }],
+                        subject: subject,
+                        htmlContent: html
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('✅ Email sent via Brevo API:', data.messageId);
+                    return { success: true, messageId: data.messageId };
+                } else {
+                    const errInfo = await response.json();
+                    console.warn('⚠️ Brevo API failed, falling back to SMTP:', errInfo);
+                }
+            } catch (apiError) {
+                console.warn('⚠️ Brevo API error, falling back to SMTP:', apiError.message);
+            }
+        }
+
+        // 2. Fallback to Transporter (SMTP)
         if (!transporter) {
             console.log('---------------------------------------------------');
             console.log(`[MOCK EMAIL] To: ${to}`);
@@ -39,13 +77,13 @@ export const sendEmail = async (to, subject, html) => {
         }
 
         const info = await transporter.sendMail({
-            from: `"${process.env.APP_NAME || 'CipherNode'}" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+            from: `"${appName}" <${fromEmail}>`,
             to,
             subject,
             html,
         });
 
-        console.log('Message sent: %s', info.messageId);
+        console.log('Message sent via SMTP: %s', info.messageId);
         return { success: true, messageId: info.messageId };
 
     } catch (error) {
