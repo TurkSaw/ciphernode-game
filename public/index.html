@@ -2396,10 +2396,12 @@
     <!-- MAIN GAME APP -->
     <div id="app-container">
         <header>
-            <div class="stats">NODE: <span id="display-username" style="color:var(--primary); cursor:pointer;"
-                    onclick="openProfile()">Unknown</span></div>
-            <div style="display:flex; align-items:center; gap:15px;">
-                <div class="stats">LVL: <span id="level-display">1</span> | PTS: <span id="score-display">0</span></div>
+            <div class="stats"><span class="desktop-only">NODE: </span><span id="display-username"
+                    style="color:var(--primary); cursor:pointer;" onclick="openProfile()">Unknown</span></div>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <div class="stats"><span class="desktop-only">LVL: </span><span id="level-display">1</span> <span
+                        class="desktop-only"> | PTS: </span><span class="mobile-spacer"> </span><span
+                        id="score-display">0</span></div>
                 <button onclick="openProfile()" class="header-sidebar-btn">👤</button>
                 <button onclick="toggleSidebar()" class="header-sidebar-btn">💬</button>
                 <button onclick="toggleMute()" class="header-sidebar-btn" id="mute-btn" title="Toggle Sound">🔊</button>
