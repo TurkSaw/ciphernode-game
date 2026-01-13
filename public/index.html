@@ -2926,13 +2926,23 @@
             const email = document.getElementById('forgot-email').value;
             const errorEl = document.getElementById('forgot-msg');
 
+            // Reset state
+            errorEl.style.display = 'none';
+
             if (!email) {
                 errorEl.style.color = 'var(--danger)';
                 errorEl.innerText = 'Please enter your email';
+                errorEl.style.display = 'block'; // FIX: Make visible
                 return;
             }
 
             try {
+                // Show loading state
+                const btn = document.querySelector('#forgot-password-screen .auth-btn');
+                const originalText = btn.innerText;
+                btn.innerText = 'Sending...';
+                btn.disabled = true;
+
                 const res = await fetch('/api/forgot-password', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -2944,10 +2954,21 @@
                 // Show success message regardless of actual user existence (security)
                 errorEl.style.color = 'var(--success)';
                 errorEl.innerText = data.message || 'If that email exists, a reset link has been sent.';
+                errorEl.style.display = 'block'; // FIX: Make visible
+
+                // Restore button
+                btn.innerText = originalText;
+                btn.disabled = false;
 
             } catch (error) {
                 errorEl.style.color = 'var(--danger)';
                 errorEl.innerText = 'Network error. Please try again.';
+                errorEl.style.display = 'block'; // FIX: Make visible
+
+                // Restore button
+                const btn = document.querySelector('#forgot-password-screen .auth-btn');
+                btn.innerText = 'Send Reset Link';
+                btn.disabled = false;
             }
         }
 
