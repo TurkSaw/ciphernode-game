@@ -20,10 +20,11 @@ export default function userRoutes(authenticateToken) {
     router.put('/profile', authenticateToken, async (req, res) => {
         try {
             const db = req.db;
-            const { displayName, bio, avatar, country, theme } = req.body;
+            const { displayName, fullName, bio, avatar, country, theme } = req.body;
 
             // Sanitize and validate inputs
             const cleanDisplayName = displayName ? validator.sanitizeString(displayName, 50) : undefined;
+            const cleanFullName = fullName ? validator.sanitizeString(fullName, 100) : undefined;
             const cleanBio = bio ? validator.sanitizeString(bio, 200) : undefined;
             const cleanAvatar = avatar ? validator.sanitizeString(avatar, 10) : undefined;
             const cleanCountry = country ? validator.sanitizeString(country, 5) : undefined;
@@ -34,6 +35,11 @@ export default function userRoutes(authenticateToken) {
                 if (cleanDisplayName.length === 0 || cleanDisplayName.length > 50) {
                     return res.status(400).json({ error: 'Display name must be 1-50 characters' });
                 }
+            }
+
+            // Validate full name
+            if (cleanFullName !== undefined && cleanFullName.length > 100) {
+                return res.status(400).json({ error: 'Full name must be less than 100 characters' });
             }
 
             // Validate bio
@@ -57,6 +63,7 @@ export default function userRoutes(authenticateToken) {
 
             const result = await db.updateProfile(req.user.username, {
                 displayName: cleanDisplayName,
+                fullName: cleanFullName,
                 bio: cleanBio,
                 avatar: cleanAvatar,
                 country: cleanCountry,

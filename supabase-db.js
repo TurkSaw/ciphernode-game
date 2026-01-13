@@ -435,6 +435,7 @@ class SupabaseDB {
             const updateData = { updated_at: new Date().toISOString() };
 
             if (profileData.displayName !== undefined) updateData.display_name = profileData.displayName;
+            if (profileData.fullName !== undefined) updateData.full_name = profileData.fullName; // NEW: Full Name
             if (profileData.bio !== undefined) updateData.bio = profileData.bio;
             if (profileData.avatar !== undefined) updateData.avatar = profileData.avatar;
             if (profileData.country !== undefined) updateData.country = profileData.country;

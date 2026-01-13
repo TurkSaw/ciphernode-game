@@ -1685,6 +1685,8 @@
 
         .stats-grid {
             gap: 12px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
         }
 
         /* Improved stat item */
@@ -2622,6 +2624,10 @@
 
             <!-- Info Tab -->
             <div id="profile-info-tab" class="profile-tab-content active">
+                <div class="profile-section">
+                    <label>Full Name (Real Name)</label>
+                    <input type="text" id="profile-full-name-input" maxlength="100" placeholder="Your real name">
+                </div>
                 <div class="profile-section">
                     <label>Display Name</label>
                     <input type="text" id="profile-display-name-input" maxlength="50" placeholder="Your display name">
@@ -3956,6 +3962,8 @@
             }
 
             // Form alanları
+            // Form alanları
+            document.getElementById('profile-full-name-input').value = user.full_name || '';
             document.getElementById('profile-display-name-input').value = user.displayName || '';
             document.getElementById('profile-bio-input').value = user.bio || '';
             document.getElementById('profile-country-input').value = user.country || '';
@@ -4006,6 +4014,7 @@
             if (!token) return;
 
             const profileData = {
+                fullName: document.getElementById('profile-full-name-input').value,
                 displayName: document.getElementById('profile-display-name-input').value,
                 bio: document.getElementById('profile-bio-input').value,
                 country: document.getElementById('profile-country-input').value,
