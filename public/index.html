@@ -1697,11 +1697,37 @@
             padding: 16px;
             text-align: center;
             transition: transform 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+
+        .stat-icon {
+            font-size: 24px;
+            margin-bottom: 5px;
+            filter: drop-shadow(0 0 5px rgba(0, 255, 157, 0.4));
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--text);
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+        }
+
+        .stat-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
         }
 
         .stat-item:hover {
             transform: translateY(-2px);
             border-color: rgba(0, 255, 157, 0.3);
+            background: rgba(0, 255, 157, 0.05);
         }
 
         /* Profile Save Button */
@@ -2657,22 +2683,27 @@
             <div id="profile-stats-tab" class="profile-tab-content">
                 <div class="stats-grid">
                     <div class="stat-item">
+                        <div class="stat-icon">🎮</div>
                         <div class="stat-value" id="stat-total-games">0</div>
                         <div class="stat-label">Total Games</div>
                     </div>
                     <div class="stat-item">
+                        <div class="stat-icon">⏱️</div>
                         <div class="stat-value" id="stat-total-time">0s</div>
                         <div class="stat-label">Total Play Time</div>
                     </div>
                     <div class="stat-item">
+                        <div class="stat-icon">📊</div>
                         <div class="stat-value" id="stat-average-time">0s</div>
                         <div class="stat-label">Average Time</div>
                     </div>
                     <div class="stat-item">
+                        <div class="stat-icon">⚡</div>
                         <div class="stat-value" id="stat-best-time">-</div>
                         <div class="stat-label">Best Time</div>
                     </div>
                     <div class="stat-item">
+                        <div class="stat-icon">🔥</div>
                         <div class="stat-value" id="stat-current-streak">0</div>
                         <div class="stat-label">Current Streak</div>
                     </div>
@@ -2680,14 +2711,16 @@
                         <div class="stat-value" id="stat-max-streak">0</div>
                         <div class="stat-label">Max Streak</div>
                     </div>
-                </div>
-                <div class="profile-section">
-                    <label>Member Since</label>
-                    <div id="stat-join-date" class="stat-text">-</div>
-                </div>
-                <div class="profile-section">
-                    <label>Last Played</label>
-                    <div id="stat-last-played" class="stat-text">-</div>
+                    <div class="stat-item">
+                        <div class="stat-icon">📅</div>
+                        <div class="stat-value" id="stat-join-date">-</div>
+                        <div class="stat-label">Member Since</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-icon">🕒</div>
+                        <div class="stat-value" id="stat-last-played">-</div>
+                        <div class="stat-label">Last Played</div>
+                    </div>
                 </div>
             </div>
 
