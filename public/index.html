@@ -3691,7 +3691,14 @@
             document.getElementById(`${tabName}-sidebar`).classList.add('active');
         }
         socket.on('chat message', (msg) => {
-            let d = document.createElement('div'); d.className = 'msg'; if (msg.user == 'System') d.className += ' system';
+            let d = document.createElement('div'); d.className = 'msg';
+            if (msg.user == 'System') {
+                d.className += ' system';
+                // Auto-delete system messages after 15 seconds
+                setTimeout(() => {
+                    if (d.parentNode) d.parentNode.removeChild(d);
+                }, 15000);
+            }
             d.innerHTML = `<span class="user">${msg.user}:</span> ${msg.text}`;
             let b = document.getElementById('chat-messages'); b.appendChild(d); b.scrollTop = b.scrollHeight;
         });
