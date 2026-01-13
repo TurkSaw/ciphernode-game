@@ -1,21 +1,27 @@
--- Migration: Switch from is_admin boolean to role string
--- 1. Add role column
+-- 1. Önce Rol sütununu ekle ve verileri taşı
 ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user';
 
--- 2. Migrate existing admins
 UPDATE users SET role = 'admin' WHERE is_admin = true;
-
--- 3. Set specific superadmin (TurkSaw)
 UPDATE users SET role = 'superadmin' WHERE username = 'TurkSaw';
 
--- 4. Drop is_admin column (optional, but cleaner to keep for backwards compatibility for now, or drop if we are sure)
--- We will keep is_admin for now but make it generated or just ignore it in code. 
--- Actually, let's just drop it to force code to use role.
+-- 2. Hata veren politikaları (Policies) SİL
+DROP POLICY IF EXISTS "Admins can update everything" ON users;
+DROP POLICY IF EXISTS "Admins can delete chat messages" ON chat_messages;
+DROP POLICY IF EXISTS "Admins can maintain system" ON users; -- Olası diğer politika
+
+-- 3. Şimdi is_admin sütununu güvenle silebiliriz
 ALTER TABLE users DROP COLUMN IF EXISTS is_admin;
 
--- 5. Fix RLS policies to use role
-DROP POLICY IF EXISTS "Authenticated users can send messages" ON chat_messages;
-CREATE POLICY "Authenticated users can send messages" ON chat_messages FOR INSERT WITH CHECK (auth.role() = 'authenticated'); -- Logic remains same for now, app level checks role
+-- 4. Politikaları yeni 'role' sistemine göre tekrar oluştur (İsteğe bağlı, güvenlik için)
+-- Adminler ve Superadmin'ler her şeyi düzenleyebilir
+CREATE POLICY "Admins can update everything" ON users 
+    FOR UPDATE USING (
+        auth.uid() = id OR 
+        exists (select 1 from users where id = auth.uid() and role in ('admin', 'superadmin'))
+    );
 
--- 6. Add policy for admin actions (if we were using Supabase Auth completely, but we use custom JWT)
--- Since we use custom JWT, we trust our application server to enforce roles.
+-- Adminler mesaj silebilir
+CREATE POLICY "Admins can delete chat messages" ON chat_messages 
+    FOR DELETE USING (
+        exists (select 1 from users where id = auth.uid() and role in ('admin', 'superadmin'))
+    );
