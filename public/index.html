@@ -1624,10 +1624,49 @@
         }
 
         /* REVISED PROFILE UI STYLES */
+        .modal {
+            display: none;
+            /* Hidden by default */
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            align-items: center;
+            justify-content: center;
+        }
+
         .profile-modal-content {
             background: rgba(15, 20, 30, 0.95);
             border: 1px solid var(--primary);
             box-shadow: 0 0 50px rgba(0, 255, 157, 0.1);
+            /* Fixed Dimensions to prevent jumping */
+            width: 95%;
+            max-width: 500px;
+            min-height: 650px;
+            max-height: 90vh;
+            /* Prevent overflow on small screens */
+            overflow-y: auto;
+            margin: auto;
+            border-radius: 24px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .profile-tab-content {
+            display: none;
+            padding: 20px;
+            flex: 1;
+            /* Stretch to fill height */
+        }
+
+        .profile-tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
         }
 
         .profile-section {
