@@ -806,14 +806,23 @@
         }
 
         /* --- CHAT SYSTEM (Bubble Design) --- */
+        .main-content-wrapper {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            height: 100%;
+        }
+
         .sidebar {
             width: 360px;
             background: #ffffff;
-            box-shadow: -5px 0 30px rgba(0, 0, 0, 0.05);
-            border-left: 1px solid #e2e8f0;
+            box-shadow: 5px 0 30px rgba(0, 0, 0, 0.05);
+            border-right: 1px solid #e2e8f0;
             display: flex;
             flex-direction: column;
-            z-index: 1000;
+            z-index: 900;
+            transition: transform 0.3s ease;
         }
 
         #chat-messages {
@@ -1504,6 +1513,34 @@
                 height: 35px;
             }
         }
+
+        @media (max-width: 1024px) {
+            .sidebar {
+                position: fixed;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                transform: translateX(-100%);
+                z-index: 2000;
+                border-right: none;
+                width: 320px;
+                box-shadow: 5px 0 20px rgba(0, 0, 0, 0.1);
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            .sidebar-toggle {
+                display: flex;
+            }
+
+            #game-area {
+                padding: 16px;
+                padding-bottom: 80px;
+                /* Space for toggle button */
+            }
+        }
     </style>
 </head>
 
@@ -1636,21 +1673,72 @@
             </div>
         </div>
 
-        <div id="game-area">
-            <div class="game-title">Decrypt the Node</div>
-            <div class="game-timer">Time: <span id="timer">0</span>s</div>
-            <div class="grid" id="grid">
-                <div class="grid-placeholder">
-                    <div class="placeholder-icon">🔒</div>
-                    <div class="placeholder-text">Click START HACK to begin</div>
+        <div class="main-content-wrapper">
+            <!-- Sidebar (Left) -->
+            <div id="sidebar" class="sidebar">
+                <div class="sidebar-header">
+                    <div class="sidebar-tabs">
+                        <button class="sidebar-tab active" onclick="switchSidebarTab('chat')" data-tab="chat">
+                            <span class="tab-icon">💬</span>
+                            <span class="tab-text">CHAT</span>
+                        </button>
+                        <button class="sidebar-tab" onclick="switchSidebarTab('leaderboard')" data-tab="leaderboard">
+                            <span class="tab-icon">🏆</span>
+                            <span class="tab-text">TOP</span>
+                        </button>
+                        <button class="sidebar-tab" onclick="switchSidebarTab('achievements')" data-tab="achievements">
+                            <span class="tab-icon">🎖️</span>
+                            <span class="tab-text">BADGES</span>
+                        </button>
+                    </div>
+                    <button class="sidebar-close" onclick="closeSidebar()">✕</button>
+                </div>
+
+                <div id="chat-sidebar" class="sidebar-content active">
+                    <div id="chat-messages">
+                        <div class="msg system"><span class="user">System:</span> Online.</div>
+                    </div>
+                    <div class="chat-input-area">
+                        <input type="text" id="chat-input" placeholder="Broadcast...">
+                        <button class="chat-send-btn" onclick="sendChat()">SEND</button>
+                    </div>
+                </div>
+
+                <div id="leaderboard-sidebar" class="sidebar-content">
+                    <div id="leaderboard-list"></div>
+                </div>
+
+                <div id="achievements-sidebar" class="sidebar-content">
+                    <div class="achievements-header">
+                        <div class="achievement-stats">
+                            <div class="achievement-progress">
+                                <span id="achievement-count">0/12</span> Unlocked
+                            </div>
+                            <div class="achievement-points">
+                                <span id="achievement-points">0</span> Points
+                            </div>
+                        </div>
+                    </div>
+                    <div id="achievements-list"></div>
                 </div>
             </div>
-            <button id="start-btn" class="btn" onclick="startGame()">START HACK (-10 Energy)</button>
-            <div id="modal" class="modal">
-                <div class="modal-content">
-                    <h2 id="modal-title">Level Cleared!</h2>
-                    <p id="modal-msg">Score: 100</p>
-                    <button class="btn" onclick="closeModal()">Continue</button>
+
+            <div id="game-area">
+                <div class="game-title">Decrypt the Node</div>
+                <div class="game-timer">Time: <span id="timer">0</span>s</div>
+                <div class="grid" id="grid">
+                    <div class="grid-placeholder">
+                        <div class="placeholder-icon">🔒</div>
+                        <div class="placeholder-text">Click START HACK to begin</div>
+                    </div>
+                </div>
+                <button id="start-btn" class="btn" onclick="startGame()">START HACK (-10 Energy)</button>
+                <div id="modal" class="modal">
+                    <div class="modal-content">
+                        <h2 id="modal-title">Level Cleared!</h2>
+                        <p id="modal-msg">Score: 100</p>
+                        <button class="btn" onclick="closeModal()">Continue</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1659,55 +1747,6 @@
         <button id="sidebar-toggle" class="sidebar-toggle" onclick="toggleSidebar()">
             <span class="toggle-icon">💬</span>
         </button>
-
-        <!-- Right Sidebar -->
-        <div id="sidebar" class="sidebar">
-            <div class="sidebar-header">
-                <div class="sidebar-tabs">
-                    <button class="sidebar-tab active" onclick="switchSidebarTab('chat')" data-tab="chat">
-                        <span class="tab-icon">💬</span>
-                        <span class="tab-text">CHAT</span>
-                    </button>
-                    <button class="sidebar-tab" onclick="switchSidebarTab('leaderboard')" data-tab="leaderboard">
-                        <span class="tab-icon">🏆</span>
-                        <span class="tab-text">TOP</span>
-                    </button>
-                    <button class="sidebar-tab" onclick="switchSidebarTab('achievements')" data-tab="achievements">
-                        <span class="tab-icon">🎖️</span>
-                        <span class="tab-text">BADGES</span>
-                    </button>
-                </div>
-                <button class="sidebar-close" onclick="closeSidebar()">✕</button>
-            </div>
-
-            <div id="chat-sidebar" class="sidebar-content active">
-                <div id="chat-messages">
-                    <div class="msg system"><span class="user">System:</span> Online.</div>
-                </div>
-                <div class="chat-input-area">
-                    <input type="text" id="chat-input" placeholder="Broadcast...">
-                    <button class="chat-send-btn" onclick="sendChat()">SEND</button>
-                </div>
-            </div>
-
-            <div id="leaderboard-sidebar" class="sidebar-content">
-                <div id="leaderboard-list"></div>
-            </div>
-
-            <div id="achievements-sidebar" class="sidebar-content">
-                <div class="achievements-header">
-                    <div class="achievement-stats">
-                        <div class="achievement-progress">
-                            <span id="achievement-count">0/12</span> Unlocked
-                        </div>
-                        <div class="achievement-points">
-                            <span id="achievement-points">0</span> Points
-                        </div>
-                    </div>
-                </div>
-                <div id="achievements-list"></div>
-            </div>
-        </div>
 
         <!-- Sidebar Overlay -->
         <div id="sidebar-overlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
