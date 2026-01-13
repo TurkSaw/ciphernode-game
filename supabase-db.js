@@ -161,6 +161,11 @@ class SupabaseDB {
 
             // Remove password from response
             const { password: _, ...userData } = user;
+
+            // Explicitly set admin flags for frontend compatibility
+            userData.isAdmin = user.role === 'admin' || user.role === 'superadmin' || user.is_admin === true;
+            userData.role = user.role || (user.is_admin ? 'admin' : 'user');
+
             return {
                 data: {
                     user: userData,

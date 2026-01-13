@@ -7,8 +7,8 @@ class AdminManager {
     }
 
     init(user) {
-        // Check if user has admin privileges
-        if (user && user.is_admin) {
+        // Check if user has admin privileges (support both new role system and legacy boolean)
+        if (user && (user.role === 'admin' || user.role === 'superadmin' || user.is_admin)) {
             this.isAdmin = true;
             this.showAdminButton();
             console.log('🛡️ Admin privileges detected');
