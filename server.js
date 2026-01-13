@@ -21,6 +21,9 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
+// Enable trust proxy for Render load balancer compatibility
+app.set('trust proxy', 1); // Trust first proxy
+
 // Supabase-only database configuration
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
     console.error('❌ CRITICAL: SUPABASE_URL and SUPABASE_ANON_KEY must be configured!');
