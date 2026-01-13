@@ -80,6 +80,9 @@ const io = new Server(server, {
 
 // Security Headers Middleware
 app.use((req, res, next) => {
+    // Pass socket.io to routes
+    req.io = io;
+
     // CORS
     const origin = req.headers.origin;
     if (allowedOrigins.includes(origin)) {
