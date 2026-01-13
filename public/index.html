@@ -1643,12 +1643,11 @@
             background: rgba(15, 20, 30, 0.95);
             border: 1px solid var(--primary);
             box-shadow: 0 0 50px rgba(0, 255, 157, 0.1);
-            /* Fixed Dimensions to prevent jumping */
-            width: 95%;
-            max-width: 500px;
+            /* Fixed Dimensions - STRICT */
+            width: 500px;
+            max-width: 95vw;
             min-height: 650px;
             max-height: 90vh;
-            /* Prevent overflow on small screens */
             overflow-y: auto;
             margin: auto;
             border-radius: 24px;
@@ -1724,8 +1723,9 @@
 
         .stats-grid {
             gap: 12px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            width: 100%;
         }
 
         /* Improved stat item */
